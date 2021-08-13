@@ -1,0 +1,16 @@
+// This contains information about buildings
+// This is a RON file (rusty object notation) available in the game-statics crate
+// This is parsed by game-statics/src/load_buildings.rs
+
+// Anyone is welcome to add suggestions and change balance
+
+[
+	(
+		name: "Industrial Complex",
+		description: "An industrial complex is a center for industry in your country and will increase its GDP by x1.5",
+		cost: 1000000000000000000000000000000000000,
+		effects: [
+			MultiplyGdp(1.5)
+		],
+	),
+]
