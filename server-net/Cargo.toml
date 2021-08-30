@@ -1,5 +1,5 @@
 [package]
-name = "packets"
+name = "server_net"
 version = "0.1.0"
 edition = "2018"
 
@@ -7,3 +7,5 @@ edition = "2018"
 
 [dependencies]
 nanoserde = { git = "https://github.com/0HyperCube/nanoserde", branch = "add-128-bit" }
+tokio = { version = "1.10", features = ["rt-multi-thread", "net", "io-util"] }
+packets = { path = "../packets" }

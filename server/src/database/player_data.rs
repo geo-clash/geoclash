@@ -1,4 +1,4 @@
-use packets::CountryId;
+use server_net::CountryId;
 
 // Argon2 with default params (Argon2id v19)
 lazy_static! {
