@@ -1,13 +1,14 @@
 [package]
-name = "cerium"
-version = "0.2.0"
+name = "client_net"
+version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { git = "https://github.com/bevyengine/bevy", features = ["dynamic", "jpeg"] }
-lazy_static = "^1.4"
 nanoserde = { git = "https://github.com/0HyperCube/nanoserde", branch = "add-128-bit" }
-game_statics = { path = "../game-statics" }
-client_net = { path = "../client-net" }
+tokio = { version = "1.10", features = ["rt-multi-thread", "net", "io-util", "sync"] }
+packets = { path = "../packets" }
+log = "0"
+thiserror = "1.0"
+crossbeam-channel = "0.5"

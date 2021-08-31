@@ -10,13 +10,13 @@ use std::sync::{Arc, Mutex};
 /// going to use a `Mutex` for interior mutability.
 #[derive(Debug)]
 pub struct Database {
-    pub players: Mutex<Vec<PlayerData>>,
+	pub players: Mutex<Vec<PlayerData>>,
 }
 impl Database {
-    pub fn construct() -> Arc<Database> {
-        let x = Arc::new(Database {
-            players: Mutex::new(Vec::new()),
-        });
-        x
-    }
+	pub fn construct() -> Arc<Database> {
+		let x = Arc::new(Database {
+			players: Mutex::new(Vec::new()),
+		});
+		x
+	}
 }

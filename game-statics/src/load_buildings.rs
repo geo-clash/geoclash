@@ -2,7 +2,8 @@ use super::building_data::BuildingData;
 use nanoserde::DeRon;
 
 fn load_buildings() -> Vec<BuildingData> {
-	let buildings: Vec<BuildingData> = DeRon::deserialize_ron(include_str!("../assets/Buildings.ron")).unwrap();
+	let buildings: Vec<BuildingData> =
+		DeRon::deserialize_ron(include_str!("../assets/Buildings.ron")).unwrap();
 	buildings
 }
 
