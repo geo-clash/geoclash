@@ -13,11 +13,11 @@ struct Country {
 pub fn evaluate(packet: ClientPackets, db: &Arc<Database>) -> ServerPackets {
 	use ClientPackets::*;
 	match packet {
-		Connect => ServerPackets::ServerInfo {
+		Connect => ServerPackets::ServerInfo(ServerInfo {
 			name: "Alpha server".to_string(),
 			description: "The testing server".to_string(),
 			host: "James".to_string(),
-		},
+		}),
 		Login { username, password } => {
 			let mut players = db.players.lock().unwrap();
 			let username = username.to_lowercase();

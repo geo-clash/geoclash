@@ -1,36 +1,167 @@
 pub type CountryId = u16;
 pub type UserId = u32;
 
-use nanoserde::{DeBin, SerBin};
+mod serializable;
+use error::ReadValueError;
+pub use serializable::ReadBuffer;
+use serializable::Serializable;
+mod serialize_types;
+pub use serialize_types::*;
 
-#[derive(Debug, SerBin, DeBin)]
-pub enum ClientPackets {
-	Connect,
+mod error;
 
-	Login { username: String, password: String },
-	SignUp { username: String, password: String },
+#[macro_use]
+mod packet_enum;
 
-	RequestCountryInfo { country: CountryId },
+packet_enum! { ClientPacket;
+	Connect: 0,
+	Login: 1,
+	SignUp: 2,
+	RequestCountryInfo: 3
 }
 
-#[derive(Debug, SerBin, DeBin)]
-pub enum ServerPackets {
-	ServerInfo {
-		name: String,
-		description: String,
-		host: String,
-	},
+packet_enum! { ServerPacket;
+	ServerInfo: 0,
+	InvalidLogin: 1,
+	InvalidSignup: 2,
+	SucessfulLogin: 3,
+	SucessfulSignup: 4,
+	CountryInfo: 5
+}
 
-	InvalidLogin {
-		error: String,
-	},
-	InvalidSignup {
-		error: String,
-	},
-	SucessfulLogin,
-	SucessfulSignup,
+pub struct WriteBuf(Vec<u8>);
 
-	CountryInfo {
-		name: String,
-	},
+impl WriteBuf {
+	pub fn new_server_packet(packet: ServerPacket) -> Self {
+		Self(u16::to_be_bytes(packet as u16).to_vec())
+	}
+	pub fn new_client_packet(packet: ClientPacket) -> Self {
+		Self(u16::to_be_bytes(packet as u16).to_vec())
+	}
+	pub fn push(&mut self, value: impl Serializable) -> &mut Self {
+		value.serialize(&mut self.0);
+		self
+	}
+	pub fn inner(&self) -> &[u8] {
+		&self.0
+	}
+	pub fn inner_mut(&mut self) -> &mut Vec<u8> {
+		&mut self.0
+	}
+}
+
+impl<'a> ReadBuffer<'a> {
+	pub fn read_server_packet(&mut self) -> Result<ServerPacket, ReadValueError> {
+		let index: u16 = Serializable::deserialize(self)?;
+		ServerPacket::from_index(index)
+	}
+	pub fn read_client_packet(&mut self) -> Result<ClientPacket, ReadValueError> {
+		let index: u16 = Serializable::deserialize(self)?;
+		ClientPacket::from_index(index)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn serialize_enum() {
+		assert_eq!(
+			WriteBuf::new_server_packet(ServerPacket::InvalidLogin).inner(),
+			&[0, 1]
+		);
+	}
+	#[test]
+	fn serialize_u8() {
+		assert_eq!(
+			WriteBuf::new_server_packet(ServerPacket::InvalidLogin)
+				.push(6_u8)
+				.inner(),
+			&[0, 1, 6]
+		);
+	}
+	#[test]
+	fn serialize_i128() {
+		assert_eq!(
+			WriteBuf::new_server_packet(ServerPacket::InvalidLogin)
+				.push(-90_i128)
+				.inner(),
+			&[
+				0, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				166
+			]
+		);
+	}
+
+	#[test]
+	fn serialize_str() {
+		assert_eq!(
+			WriteBuf::new_server_packet(ServerPacket::InvalidLogin)
+				.push(String::from("hello"))
+				.inner(),
+			&[0, 1, 0, 5, 104, 101, 108, 108, 111]
+		);
+	}
+
+	#[test]
+	fn deserialize_enum() {
+		assert_eq!(
+			ReadBuffer::new(&vec![0, 1]).read_server_packet().unwrap(),
+			ServerPacket::InvalidLogin
+		);
+	}
+	#[test]
+	fn deserialize_u8() {
+		assert_eq!(
+			u8::deserialize(&mut ReadBuffer::new(&vec![6])).unwrap(),
+			6_u8
+		);
+	}
+	#[test]
+	fn deserialize_i128() {
+		assert_eq!(
+			i128::deserialize(&mut ReadBuffer::new(&vec![
+				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 166
+			]))
+			.unwrap(),
+			-90_i128
+		);
+	}
+
+	#[test]
+	fn deserialize_str() {
+		assert_eq!(
+			String::deserialize(&mut ReadBuffer::new(&vec![0, 5, 104, 101, 108, 108, 111]))
+				.unwrap(),
+			String::from("hello")
+		);
+	}
+
+	#[test]
+	fn server_info() {
+		let server_info = ServerInfo {
+			name: "test".to_string(),
+			description: "test descrip".to_string(),
+			host: "test_host".to_string(),
+		};
+		let mut f = WriteBuf::new_server_packet(ServerPacket::CountryInfo);
+		f.push(server_info.clone());
+
+		let mut reader = ReadBuffer::new(&f.0);
+
+		assert_eq!(
+			reader.read_server_packet().unwrap(),
+			ServerPacket::CountryInfo
+		);
+
+		assert_eq!(ServerInfo::deserialize(&mut reader).unwrap(), server_info);
+	}
+
+	#[test]
+	fn str_too_long() {
+		assert_eq!(
+			String::deserialize(&mut ReadBuffer::new(&vec![0, 6, 104, 101, 108, 108, 111])),
+			Err(ReadValueError::BufferToShort(6, "String value"))
+		);
+	}
 }
