@@ -2,9 +2,9 @@ pub type CountryId = u16;
 pub type UserId = u32;
 
 mod serializable;
-use error::ReadValueError;
+pub use error::ReadValueError;
 pub use serializable::ReadBuffer;
-use serializable::Serializable;
+pub use serializable::Serializable;
 mod serialize_types;
 pub use serialize_types::*;
 
@@ -14,19 +14,20 @@ mod error;
 mod packet_enum;
 
 packet_enum! { ClientPacket;
-	Connect: 0,
-	Login: 1,
-	SignUp: 2,
-	RequestCountryInfo: 3
+	Connect,
+	Login,
+	SignUp,
+	RequestCountryInfo
 }
 
 packet_enum! { ServerPacket;
-	ServerInfo: 0,
-	InvalidLogin: 1,
-	InvalidSignup: 2,
-	SucessfulLogin: 3,
-	SucessfulSignup: 4,
-	CountryInfo: 5
+	PacketLengthInvalid,
+	ServerInfo,
+	InvalidLogin,
+	InvalidSignup,
+	SucessfulLogin,
+	SucessfulSignup,
+	CountryInfo
 }
 
 pub struct WriteBuf(Vec<u8>);
@@ -50,7 +51,7 @@ impl WriteBuf {
 	}
 }
 
-impl<'a> ReadBuffer<'a> {
+impl ReadBuffer {
 	pub fn read_server_packet(&mut self) -> Result<ServerPacket, ReadValueError> {
 		let index: u16 = Serializable::deserialize(self)?;
 		ServerPacket::from_index(index)
@@ -67,14 +68,14 @@ mod tests {
 	#[test]
 	fn serialize_enum() {
 		assert_eq!(
-			WriteBuf::new_server_packet(ServerPacket::InvalidLogin).inner(),
+			WriteBuf::new_server_packet(ServerPacket::ServerInfo).inner(),
 			&[0, 1]
 		);
 	}
 	#[test]
 	fn serialize_u8() {
 		assert_eq!(
-			WriteBuf::new_server_packet(ServerPacket::InvalidLogin)
+			WriteBuf::new_server_packet(ServerPacket::ServerInfo)
 				.push(6_u8)
 				.inner(),
 			&[0, 1, 6]
@@ -83,7 +84,7 @@ mod tests {
 	#[test]
 	fn serialize_i128() {
 		assert_eq!(
-			WriteBuf::new_server_packet(ServerPacket::InvalidLogin)
+			WriteBuf::new_server_packet(ServerPacket::ServerInfo)
 				.push(-90_i128)
 				.inner(),
 			&[
@@ -96,7 +97,7 @@ mod tests {
 	#[test]
 	fn serialize_str() {
 		assert_eq!(
-			WriteBuf::new_server_packet(ServerPacket::InvalidLogin)
+			WriteBuf::new_server_packet(ServerPacket::ServerInfo)
 				.push(String::from("hello"))
 				.inner(),
 			&[0, 1, 0, 5, 104, 101, 108, 108, 111]
@@ -106,21 +107,21 @@ mod tests {
 	#[test]
 	fn deserialize_enum() {
 		assert_eq!(
-			ReadBuffer::new(&vec![0, 1]).read_server_packet().unwrap(),
+			ReadBuffer::new(vec![0, 2]).read_server_packet().unwrap(),
 			ServerPacket::InvalidLogin
 		);
 	}
 	#[test]
 	fn deserialize_u8() {
 		assert_eq!(
-			u8::deserialize(&mut ReadBuffer::new(&vec![6])).unwrap(),
+			u8::deserialize(&mut ReadBuffer::new(vec![6])).unwrap(),
 			6_u8
 		);
 	}
 	#[test]
 	fn deserialize_i128() {
 		assert_eq!(
-			i128::deserialize(&mut ReadBuffer::new(&vec![
+			i128::deserialize(&mut ReadBuffer::new(vec![
 				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 166
 			]))
 			.unwrap(),
@@ -131,8 +132,7 @@ mod tests {
 	#[test]
 	fn deserialize_str() {
 		assert_eq!(
-			String::deserialize(&mut ReadBuffer::new(&vec![0, 5, 104, 101, 108, 108, 111]))
-				.unwrap(),
+			String::deserialize(&mut ReadBuffer::new(vec![0, 5, 104, 101, 108, 108, 111])).unwrap(),
 			String::from("hello")
 		);
 	}
@@ -147,7 +147,7 @@ mod tests {
 		let mut f = WriteBuf::new_server_packet(ServerPacket::CountryInfo);
 		f.push(server_info.clone());
 
-		let mut reader = ReadBuffer::new(&f.0);
+		let mut reader = ReadBuffer::new(f.0);
 
 		assert_eq!(
 			reader.read_server_packet().unwrap(),
@@ -160,7 +160,7 @@ mod tests {
 	#[test]
 	fn str_too_long() {
 		assert_eq!(
-			String::deserialize(&mut ReadBuffer::new(&vec![0, 6, 104, 101, 108, 108, 111])),
+			String::deserialize(&mut ReadBuffer::new(vec![0, 6, 104, 101, 108, 108, 111])),
 			Err(ReadValueError::BufferToShort(6, "String value"))
 		);
 	}

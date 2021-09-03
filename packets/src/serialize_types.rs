@@ -34,3 +34,23 @@ impl Serializable for ServerInfo {
 		})
 	}
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Authentication {
+	pub username: String,
+	pub password: String,
+}
+
+impl Serializable for Authentication {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		self.username.serialize(buf);
+		self.password.serialize(buf);
+	}
+
+	fn deserialize(buf: &mut crate::ReadBuffer) -> Result<Self, crate::error::ReadValueError> {
+		Ok(Self {
+			username: String::deserialize(buf)?,
+			password: String::deserialize(buf)?,
+		})
+	}
+}

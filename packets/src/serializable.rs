@@ -1,13 +1,13 @@
 use crate::error::ReadValueError;
 use std::convert::TryInto;
 
-pub struct ReadBuffer<'a> {
-	buffer: &'a Vec<u8>,
+pub struct ReadBuffer {
+	buffer: Vec<u8>,
 	position: usize,
 }
 
-impl<'a> ReadBuffer<'a> {
-	pub fn new(buffer: &'a Vec<u8>) -> Self {
+impl<'a> ReadBuffer {
+	pub fn new(buffer: Vec<u8>) -> Self {
 		Self {
 			buffer,
 			position: 0,
