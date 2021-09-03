@@ -1,70 +1,90 @@
-use server_net::*;
+use server_net::{mpsc::Receiver, ClientConnection, ReadBuffer, UserId, *};
 mod database;
 use database::*;
-use std::sync::Arc;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
+use simple_logger::SimpleLogger;
 
 #[derive(PartialEq, Eq, Hash)]
 struct Country {
 	owner: UserId,
 }
 
-pub fn evaluate(packet: ClientPackets, db: &Arc<Database>) -> ServerPackets {
-	use ClientPackets::*;
+async fn handle_packet(
+	read_buffer: &mut ReadBuffer,
+	mut client_connection: ClientConnection,
+) -> Result<(), ReadValueError> {
+	let packet = read_buffer.read_client_packet()?;
+	info!("Recieved packet {:?} from client", packet);
+	let mut db = Database::construct();
 	match packet {
-		Connect => ServerPackets::ServerInfo(ServerInfo {
-			name: "Alpha server".to_string(),
-			description: "The testing server".to_string(),
-			host: "James".to_string(),
-		}),
-		Login { username, password } => {
-			let mut players = db.players.lock().unwrap();
-			let username = username.to_lowercase();
-			if let Some(player_data) = players
-				.iter_mut()
-				.find(|p| p.name.to_lowercase() == username)
-			{
-				if player_data.check_pass(password) {
-					ServerPackets::SucessfulLogin
+		ClientPacket::Connect => {
+			client_connection
+				.socket_write(WriteBuf::new_server_packet(ServerPacket::ServerInfo).push(
+					ServerInfo {
+						name: "Alpha server".to_string(),
+						description: "The testing server".to_string(),
+						host: "James".to_string(),
+					},
+				))
+				.await;
+		}
+		ClientPacket::SignUp => {
+			let auth = Authentication::deserialize(read_buffer)?;
+			info!("signup Auth {:?}", auth);
+			let response = if PlayerData::pass_secure(&auth.password) {
+				if db.get_player_by_username(&auth.username).is_some() {
+					ServerPacket::InvalidSignup
 				} else {
-					ServerPackets::InvalidLogin {
-						error: "Hashed passwords do not match".to_string(),
-					}
+					db.players.push(PlayerData::new(auth));
+					ServerPacket::SucessfulSignup
 				}
 			} else {
-				ServerPackets::InvalidLogin {
-					error: "Username not found".to_string(),
-				}
-			}
+				ServerPacket::InvalidSignup
+			};
+			client_connection
+				.socket_write(&mut WriteBuf::new_server_packet(response))
+				.await;
 		}
-		SignUp { username, password } => {
-			let mut players = db.players.lock().unwrap();
-			let username = username.to_lowercase();
-			let taken = players
-				.iter()
-				.find(|p| p.name.to_lowercase() == username)
-				.is_some();
-			if taken {
-				ServerPackets::InvalidSignup {
-					error: "Username taken".to_string(),
-				}
-			} else if PlayerData::pass_secure(&password) {
-				ServerPackets::InvalidSignup {
-					error: "Password too short".to_string(),
+		ClientPacket::Login => {
+			let auth = Authentication::deserialize(read_buffer)?;
+			info!("login Auth {:?}", auth);
+			let response = if let Some(user) = db.get_player_by_username(&auth.username) {
+				if user.check_pass(auth.password) {
+					ServerPacket::SucessfulLogin
+				} else {
+					ServerPacket::InvalidLogin
 				}
 			} else {
-				players.push(PlayerData::new(username, password));
-				ServerPackets::SucessfulSignup
-			}
+				ServerPacket::InvalidLogin
+			};
+			client_connection
+				.socket_write(&mut WriteBuf::new_server_packet(response))
+				.await;
 		}
-		RequestCountryInfo { country: _ } => todo!(),
+		ClientPacket::RequestCountryInfo => todo!(),
+	}
+	Ok(())
+}
+
+async fn handle_packets<'a>(mut read_buf_reciever: Receiver<(ReadBuffer, ClientConnection)>) {
+	while let Some(mut data) = read_buf_reciever.recv().await {
+		handle_packet(&mut data.0, data.1)
+			.await
+			.unwrap_or_else(|e| error!("error reading data from client {}", e))
 	}
 }
 
 fn main() {
-	let db = Database::construct();
+	SimpleLogger::new().init().unwrap();
+
+	info!("Spawning runtime");
 
 	let rt = Runtime::new().unwrap();
-	rt.block_on(server("127.0.0.1:2453", evaluate, db)).unwrap();
+	let (read_buf_sender, read_buf_reciever) = mpsc::channel::<(ReadBuffer, ClientConnection)>(100);
+	rt.spawn(server("127.0.0.1:2453", read_buf_sender));
+
+	rt.block_on(handle_packets(read_buf_reciever));
 }

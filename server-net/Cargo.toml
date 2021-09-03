@@ -6,6 +6,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nanoserde = { git = "https://github.com/0HyperCube/nanoserde", branch = "add-128-bit" }
-tokio = { version = "1.10", features = ["rt-multi-thread", "net", "io-util"] }
+tokio = { version = "1.10", features = ["rt-multi-thread", "net", "io-util", "sync"] }
 packets = { path = "../packets" }
+log = "0.4"

@@ -2,21 +2,24 @@ mod player_data;
 
 pub use player_data::PlayerData;
 
-use std::sync::{Arc, Mutex};
-
 /// The in-memory database shared amongst all clients.
-///
-/// This database will be shared via `Arc`, so to mutate the internal data we're
-/// going to use a `Mutex` for interior mutability.
 #[derive(Debug)]
 pub struct Database {
-	pub players: Mutex<Vec<PlayerData>>,
+	pub players: Vec<PlayerData>,
 }
 impl Database {
-	pub fn construct() -> Arc<Database> {
-		let x = Arc::new(Database {
-			players: Mutex::new(Vec::new()),
-		});
-		x
+	pub fn construct() -> Database {
+		Database {
+			players: Vec::new(),
+		}
+	}
+}
+
+impl Database {
+	pub fn get_player_by_username(&self, username: &String) -> Option<&PlayerData> {
+		let target = username.to_lowercase();
+		self.players
+			.iter()
+			.find(|f| f.username.to_lowercase() == target)
 	}
 }
