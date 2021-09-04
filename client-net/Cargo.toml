@@ -6,9 +6,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nanoserde = { git = "https://github.com/0HyperCube/nanoserde", branch = "add-128-bit" }
-tokio = { version = "1.10", features = ["rt-multi-thread", "net", "io-util", "sync"] }
-packets = { path = "../packets" }
+net = { path = "../net" }
 log = "0"
 thiserror = "1.0"
-crossbeam-channel = "0.5"
+async-channel = "1.6"
+bevy = { git = "https://github.com/bevyengine/bevy", features = ["dynamic"] }

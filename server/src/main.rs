@@ -1,4 +1,7 @@
-use server_net::{mpsc::Receiver, ClientConnection, ReadBuffer, UserId, *};
+use async_channel::{Receiver, Sender};
+use net::{ReadBuffer, UserId, *};
+mod server_net;
+use server_net::server;
 mod database;
 use database::*;
 #[macro_use]
@@ -14,22 +17,23 @@ struct Country {
 
 async fn handle_packet(
 	read_buffer: &mut ReadBuffer,
-	mut client_connection: ClientConnection,
+	write_buf_sender: Sender<WriteBuf>,
 ) -> Result<(), ReadValueError> {
 	let packet = read_buffer.read_client_packet()?;
 	info!("Recieved packet {:?} from client", packet);
 	let mut db = Database::construct();
 	match packet {
 		ClientPacket::Connect => {
-			client_connection
-				.socket_write(WriteBuf::new_server_packet(ServerPacket::ServerInfo).push(
-					ServerInfo {
+			write_buf_sender
+				.send(
+					WriteBuf::new_server_packet(ServerPacket::ServerInfo).push(ServerInfo {
 						name: "Alpha server".to_string(),
 						description: "The testing server".to_string(),
 						host: "James".to_string(),
-					},
-				))
-				.await;
+					}),
+				)
+				.await
+				.unwrap();
 		}
 		ClientPacket::SignUp => {
 			let auth = Authentication::deserialize(read_buffer)?;
@@ -44,9 +48,10 @@ async fn handle_packet(
 			} else {
 				ServerPacket::InvalidSignup
 			};
-			client_connection
-				.socket_write(&mut WriteBuf::new_server_packet(response))
-				.await;
+			write_buf_sender
+				.send(WriteBuf::new_server_packet(response))
+				.await
+				.unwrap();
 		}
 		ClientPacket::Login => {
 			let auth = Authentication::deserialize(read_buffer)?;
@@ -60,17 +65,18 @@ async fn handle_packet(
 			} else {
 				ServerPacket::InvalidLogin
 			};
-			client_connection
-				.socket_write(&mut WriteBuf::new_server_packet(response))
-				.await;
+			write_buf_sender
+				.send(WriteBuf::new_server_packet(response))
+				.await
+				.unwrap();
 		}
 		ClientPacket::RequestCountryInfo => todo!(),
 	}
 	Ok(())
 }
 
-async fn handle_packets<'a>(mut read_buf_reciever: Receiver<(ReadBuffer, ClientConnection)>) {
-	while let Some(mut data) = read_buf_reciever.recv().await {
+async fn handle_packets<'a>(read_buf_reciever: Receiver<(ReadBuffer, Sender<WriteBuf>)>) {
+	while let Ok(mut data) = read_buf_reciever.recv().await {
 		handle_packet(&mut data.0, data.1)
 			.await
 			.unwrap_or_else(|e| error!("error reading data from client {}", e))
@@ -83,7 +89,9 @@ fn main() {
 	info!("Spawning runtime");
 
 	let rt = Runtime::new().unwrap();
-	let (read_buf_sender, read_buf_reciever) = mpsc::channel::<(ReadBuffer, ClientConnection)>(100);
+	let (read_buf_sender, read_buf_reciever) =
+		async_channel::unbounded::<(ReadBuffer, Sender<WriteBuf>)>();
+
 	rt.spawn(server("127.0.0.1:2453", read_buf_sender));
 
 	rt.block_on(handle_packets(read_buf_reciever));

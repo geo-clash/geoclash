@@ -8,6 +8,5 @@ edition = "2018"
 [dependencies]
 bevy = { git = "https://github.com/bevyengine/bevy", features = ["dynamic", "jpeg"] }
 lazy_static = "^1.4"
-nanoserde = { git = "https://github.com/0HyperCube/nanoserde", branch = "add-128-bit" }
 game_statics = { path = "../game-statics" }
 client_net = { path = "../client-net" }

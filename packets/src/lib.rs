@@ -39,7 +39,7 @@ impl WriteBuf {
 	pub fn new_client_packet(packet: ClientPacket) -> Self {
 		Self(u16::to_be_bytes(packet as u16).to_vec())
 	}
-	pub fn push(&mut self, value: impl Serializable) -> &mut Self {
+	pub fn push(mut self, value: impl Serializable) -> Self {
 		value.serialize(&mut self.0);
 		self
 	}
@@ -144,8 +144,7 @@ mod tests {
 			description: "test descrip".to_string(),
 			host: "test_host".to_string(),
 		};
-		let mut f = WriteBuf::new_server_packet(ServerPacket::CountryInfo);
-		f.push(server_info.clone());
+		let f = WriteBuf::new_server_packet(ServerPacket::CountryInfo).push(server_info.clone());
 
 		let mut reader = ReadBuffer::new(f.0);
 

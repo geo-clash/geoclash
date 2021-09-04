@@ -1,9 +1,8 @@
 [workspace]
 members = [
 	"cerium",
-	"client-net",
+	"net",
 	"game-statics",
 	"packets",
 	"server",
-	"server-net"
 ]

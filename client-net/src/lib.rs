@@ -1,41 +1,36 @@
-use crossbeam_channel::{unbounded, Receiver, Sender};
-use log::*;
-pub use nanoserde::{DeBin, SerBin};
-pub use packets::{ClientPackets, ServerPackets};
-use std::net::SocketAddr;
-pub use tokio::{
-	io::{AsyncReadExt, AsyncWriteExt},
-	sync::mpsc::unbounded_channel,
+use async_channel::{Receiver, Sender};
+use bevy::prelude::*;
+use net::{
+	tokio::net::{
+		tcp::{OwnedReadHalf, OwnedWriteHalf},
+		TcpStream,
+	},
+	ReadBuffer, RemoteConnection, Runtime, WriteBuf,
 };
-use tokio::{net::TcpStream, runtime::Runtime, sync::mpsc::UnboundedSender, task::JoinHandle};
+use std::net::SocketAddr;
+
+pub struct ClientNetworkPlugin;
+
+impl Plugin for ClientNetworkPlugin {
+	fn build(&self, app: &mut App) {
+		app.add_system_to_stage(CoreStage::PreUpdate, check_connect);
+	}
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum NetworkError {
-	#[error("An error occured when accepting a new connnection: {0}")]
-	Accept(std::io::Error),
+	#[error("Could not find server adress: {0}")]
+	AdressNotFound(std::io::Error),
 	#[error("Could not find connection with id: {0}")]
 	ConnectionNotFound(SocketAddr),
 	#[error("Connection closed with id: {0}")]
 	ChannelClosed(SocketAddr),
 	#[error("Not connected to any server")]
 	NotConnected,
-	#[error("An error occured when trying to start listening for new connections: {0}")]
-	Listen(std::io::Error),
 	#[error("An error occured when trying to connect: {0}")]
 	Connection(std::io::Error),
-}
-
-pub struct SyncChannel<T> {
-	pub sender: Sender<T>,
-	pub receiver: Receiver<T>,
-}
-
-impl<T> SyncChannel<T> {
-	fn new() -> Self {
-		let (sender, receiver) = unbounded();
-
-		SyncChannel { sender, receiver }
-	}
+	#[error("An error occured when trying to send data between threads")]
+	SendData,
 }
 
 #[derive(Debug)]
@@ -45,99 +40,93 @@ pub enum ClientNetworkEvent {
 	Error(NetworkError),
 }
 
-pub struct ServerConnection {
-	pub peer_addr: SocketAddr,
-	pub receive_task: JoinHandle<()>,
-	pub send_task: JoinHandle<()>,
-	pub send_message: UnboundedSender<ClientPackets>,
-}
-
-impl ServerConnection {
-	fn stop(self) {
-		self.receive_task.abort();
-		self.send_task.abort();
-	}
+struct NetThreadConnection {
+	pub send_write_buf: Sender<WriteBuf>,
+	pub recieve_read_buf: Receiver<ReadBuffer>,
 }
 
 pub struct NetworkClient {
 	pub runtime: Runtime,
-	pub server_connection: Option<ServerConnection>,
-	pub network_events: SyncChannel<ClientNetworkEvent>,
-	pub connection_events: SyncChannel<(TcpStream, SocketAddr)>,
+	pub connection_event_reciever: Receiver<TcpStream>,
+	net_thread_connection: Option<NetThreadConnection>,
+}
+
+async fn connect(
+	addr: &'static str,
+	connect_sender: Sender<TcpStream>,
+) -> Result<(), NetworkError> {
+	let stream = TcpStream::connect(addr)
+		.await
+		.map_err(|e| NetworkError::Connection(e))?;
+
+	let other_addr = stream
+		.peer_addr()
+		.map_err(|e| NetworkError::AdressNotFound(e))?;
+
+	info!("Connected to: {:?}", addr);
+
+	connect_sender
+		.send(stream)
+		.await
+		.map_err(|_| NetworkError::SendData)
+}
+
+async fn dispatch_messages(mut connection: OwnedWriteHalf, reciever: Receiver<WriteBuf>) {
+	while let Ok(mut message) = reciever.recv().await {
+		RemoteConnection::socket_write(&mut message, &mut connection).await;
+	}
+}
+
+async fn read_messages(mut connection: OwnedReadHalf, sender: Sender<ReadBuffer>) {
+	info!("recieving messages");
+	let mut buffer = vec![0; 1000];
+	loop {
+		use net::ReadResponse;
+		match RemoteConnection::read_length(&mut buffer, &mut connection).await {
+			ReadResponse::Ok(len) => {
+				info!("Recieved message: {:?}", &buffer[0..len]);
+				let b = ReadBuffer::new(buffer[0..len].to_vec());
+				sender.send(b).await.unwrap();
+			}
+			ReadResponse::Disconnected => break,
+			ReadResponse::Error => return,
+			ReadResponse::PacketLengthTooLong => {
+				error!("Packet length more than buffer length");
+			}
+		}
+	}
 }
 
 impl NetworkClient {
-	pub fn new() -> Self {
-		Self {
+	pub fn new(addr: &'static str) -> Self {
+		let (connect_sender, connect_reciever) = async_channel::bounded::<TcpStream>(1);
+		let client = Self {
 			runtime: Runtime::new().expect("Could not create a tokio runtime"),
-			server_connection: None,
-			network_events: SyncChannel::new(),
-			connection_events: SyncChannel::new(),
-		}
-	}
-	pub fn connect(&mut self, addr: &'static str) {
-		let network_error_sender = self.network_events.sender.clone();
-		let connection_event_sender = self.connection_events.sender.clone();
-		self.runtime.spawn(async move {
-			let stream = match TcpStream::connect(addr).await {
-				Ok(stream) => stream,
-				Err(error) => {
-					match network_error_sender
-						.send(ClientNetworkEvent::Error(NetworkError::Connection(error)))
-					{
-						Ok(_) => (),
-						Err(err) => {
-							error!("Could not send error event: {}", err);
-						}
-					}
-
-					return;
-				}
-			};
-			println!("stream.");
-
-			let addr = stream
-				.peer_addr()
-				.expect("Could not fetch peer_addr of existing stream");
-
-			println!("addr {}.", addr);
-
-			match connection_event_sender.send((stream, addr)) {
-				Ok(_) => (),
-				Err(err) => {
-					error!("Could not initiate connection: {}", err);
-				}
-			}
-
-			println!("Connected to: {:?}", addr);
-		});
-	}
-	pub fn disconnect(&mut self) {
-		if let Some(conn) = self.server_connection.take() {
-			conn.stop();
-
-			let _ = self
-				.network_events
-				.sender
-				.send(ClientNetworkEvent::Disconnected);
-		}
-	}
-
-	pub fn send_message(&self, message: ClientPackets) -> Result<(), NetworkError> {
-		debug!("Sending message to server");
-		let server_connection = match self.server_connection.as_ref() {
-			Some(server) => server,
-			None => return Err(NetworkError::NotConnected),
+			connection_event_reciever: connect_reciever,
+			net_thread_connection: None,
 		};
+		info!("Connecting...");
+		client.runtime.spawn(connect(addr, connect_sender));
+		client
+	}
+}
 
-		match server_connection.send_message.send(message) {
-			Ok(_) => (),
-			Err(err) => {
-				error!("Server disconnected: {}", err);
-				return Err(NetworkError::NotConnected);
-			}
+fn check_connect(client: Option<ResMut<NetworkClient>>) {
+	if let Some(mut c) = client {
+		if let Ok(x) = c.connection_event_reciever.try_recv() {
+			let (socket_reader, socket_writer) = x.into_split();
+
+			let (send_write_buf, recieve_write_buf) = async_channel::unbounded::<WriteBuf>();
+
+			let (send_read_buf, recieve_read_buf) = async_channel::unbounded::<ReadBuffer>();
+			c.runtime.spawn(read_messages(socket_reader, send_read_buf));
+			c.runtime
+				.spawn(dispatch_messages(socket_writer, recieve_write_buf));
+
+			c.net_thread_connection = Some(NetThreadConnection {
+				send_write_buf,
+				recieve_read_buf,
+			})
 		}
-
-		Ok(())
 	}
 }
