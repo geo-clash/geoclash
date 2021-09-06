@@ -10,3 +10,4 @@ bevy = { git = "https://github.com/bevyengine/bevy", features = ["dynamic", "jpe
 lazy_static = "^1.4"
 game_statics = { path = "../game-statics" }
 client_net = { path = "../client-net" }
+bevy_egui = { git = "https://github.com/geo-clash/bevy_egui.git" }

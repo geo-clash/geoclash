@@ -1,6 +1,7 @@
 use bevy::{pbr::AmbientLight, prelude::*};
 mod camera;
 mod city;
+mod connect_ui;
 mod info;
 mod network;
 mod world;
@@ -18,6 +19,7 @@ fn main() {
 		.add_plugin(city::CityPlugin)
 		.add_plugin(info::InfoPlugin)
 		.add_plugin(network::NetworkPlugin)
+		.add_plugin(connect_ui::ConnectUIPlugin)
 		.add_startup_system(setup.system())
 		.run();
 }
