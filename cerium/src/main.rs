@@ -19,7 +19,7 @@ fn main() {
 		.add_plugin(city::CityPlugin)
 		.add_plugin(info::InfoPlugin)
 		.add_plugin(connect_ui::ConnectUIPlugin)
-		.add_startup_system(setup.system())
+		.add_startup_system(setup)
 		.run();
 }
 

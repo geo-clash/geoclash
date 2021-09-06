@@ -6,8 +6,7 @@ pub struct CityPlugin;
 
 impl Plugin for CityPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_startup_system(setup.system())
-			.add_system(hover_city.system());
+		app.add_startup_system(setup).add_system(hover_city);
 	}
 }
 

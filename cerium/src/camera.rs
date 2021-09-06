@@ -4,9 +4,9 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_startup_system(setup.system())
-			.add_system(camera_input.system())
-			.add_system(camera_movement.system());
+		app.add_startup_system(setup)
+			.add_system(camera_input)
+			.add_system(camera_movement);
 	}
 }
 

@@ -9,9 +9,9 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 impl Plugin for InfoPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_startup_system(setup.system())
+		app.add_startup_system(setup)
 			.add_plugin(FrameTimeDiagnosticsPlugin::default())
-			.add_system(text_update_system.system());
+			.add_system(text_update_system);
 	}
 }
 

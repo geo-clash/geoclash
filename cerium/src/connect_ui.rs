@@ -12,7 +12,7 @@ pub struct ConnectUIPlugin;
 
 impl Plugin for ConnectUIPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_system(ui_example.system())
+		app.add_system(ui_example)
 			.add_plugin(ClientNetworkPlugin)
 			.add_plugin(EguiPlugin)
 			.init_resource::<ConnectUIState>()

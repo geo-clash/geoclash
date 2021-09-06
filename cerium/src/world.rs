@@ -4,7 +4,7 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_startup_system(setup.system());
+		app.add_startup_system(setup);
 	}
 }
 fn setup(
