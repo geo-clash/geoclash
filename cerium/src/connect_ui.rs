@@ -1,8 +1,11 @@
+use std::net::SocketAddr;
+
 use bevy::prelude::*;
 use bevy_egui::{
 	egui::{self, Label},
 	EguiContext, EguiPlugin,
 };
+use client_net::*;
 use egui::widgets::{Button, TextEdit};
 
 pub struct ConnectUIPlugin;
@@ -10,8 +13,12 @@ pub struct ConnectUIPlugin;
 impl Plugin for ConnectUIPlugin {
 	fn build(&self, app: &mut App) {
 		app.add_system(ui_example.system())
+			.add_plugin(ClientNetworkPlugin)
 			.add_plugin(EguiPlugin)
-			.init_resource::<ConnectUIState>();
+			.init_resource::<ConnectUIState>()
+			.net_listen::<{ ServerPacket::Connect as u16 }>()
+			.add_system(on_connect)
+			.add_system(on_net_error);
 	}
 }
 
@@ -24,7 +31,11 @@ struct ConnectUIState {
 	sent: bool,
 }
 
-fn ui_example(egui_context: ResMut<EguiContext>, mut state: ResMut<ConnectUIState>) {
+fn ui_example(
+	egui_context: ResMut<EguiContext>,
+	mut state: ResMut<ConnectUIState>,
+	mut commands: Commands,
+) {
 	if !state.sent {
 		egui::SidePanel::left("my_side_panel").show(egui_context.ctx(), |ui| {
 			ui.heading("Login");
@@ -60,9 +71,30 @@ fn ui_example(egui_context: ResMut<EguiContext>, mut state: ResMut<ConnectUIStat
 					println!("Some required fields are missing");
 					state.status = Some("Some required fields are missing.".to_string());
 				} else {
-					state.status = Some("Connecting...".to_string());
+					if let Ok(remote) = state.server_address.parse::<SocketAddr>() {
+						state.status = Some("Connecting...".to_string());
+						let net_client = NetworkClient::new(remote);
+						commands.insert_resource(net_client);
+					} else {
+						state.status = Some(format!("Invalid address '{}'", state.server_address));
+					}
 				}
 			}
 		});
+	}
+}
+
+fn on_connect(
+	mut events: EventReader<EventReadBuffer<{ ServerPacket::Connect as u16 }>>,
+	mut state: ResMut<ConnectUIState>,
+) {
+	for _ in events.iter() {
+		state.status = Some("Connected!".to_string());
+	}
+}
+
+fn on_net_error(mut events: EventReader<NetworkError>, mut state: ResMut<ConnectUIState>) {
+	for e in events.iter() {
+		state.status = Some(format!("Error {}", e));
 	}
 }

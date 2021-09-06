@@ -18,7 +18,8 @@ impl Plugin for ClientNetworkPlugin {
 	fn build(&self, app: &mut App) {
 		app.add_system_to_stage(CoreStage::PreUpdate, check_connect)
 			.add_event::<WriteBuf>()
-			.add_system_to_stage(CoreStage::PostUpdate, handle_write);
+			.add_system_to_stage(CoreStage::PostUpdate, handle_write)
+			.add_event::<NetworkError>();
 	}
 }
 
@@ -63,27 +64,49 @@ struct NetThreadConnection {
 
 pub struct NetworkClient {
 	pub runtime: Runtime,
-	pub connection_event_reciever: Receiver<TcpStream>,
+	pub connection_event_reciever: Receiver<Result<TcpStream, NetworkError>>,
 	net_thread_connection: Option<NetThreadConnection>,
+}
+
+#[derive(Default)]
+pub struct RegisteredRecievers {
 	registered_recievers: Option<Vec<u16>>,
 }
 
 async fn connect(
-	addr: &'static str,
-	connect_sender: Sender<TcpStream>,
+	addr: SocketAddr,
+	connect_sender: Sender<Result<TcpStream, NetworkError>>,
 ) -> Result<(), NetworkError> {
-	let stream = TcpStream::connect(addr)
+	let stream = match TcpStream::connect(addr)
 		.await
-		.map_err(|e| NetworkError::Connection(e))?;
+		.map_err(|e| NetworkError::Connection(e))
+	{
+		Ok(x) => x,
+		Err(e) => {
+			return connect_sender
+				.send(Err(e))
+				.await
+				.map_err(|_| NetworkError::SendData)
+		}
+	};
 
-	let other_addr = stream
+	let other_addr = match stream
 		.peer_addr()
-		.map_err(|e| NetworkError::AdressNotFound(e))?;
+		.map_err(|e| NetworkError::AdressNotFound(e))
+	{
+		Ok(x) => x,
+		Err(e) => {
+			return connect_sender
+				.send(Err(e))
+				.await
+				.map_err(|_| NetworkError::SendData)
+		}
+	};
 
 	info!("Connected to: {:?}", other_addr);
 
 	connect_sender
-		.send(stream)
+		.send(Ok(stream))
 		.await
 		.map_err(|_| NetworkError::SendData)
 }
@@ -131,13 +154,13 @@ async fn read_messages(mut connection: OwnedReadHalf, sender: BTreeMap<u16, Send
 }
 
 impl NetworkClient {
-	pub fn new(addr: &'static str) -> Self {
-		let (connect_sender, connect_reciever) = async_channel::bounded::<TcpStream>(1);
+	pub fn new(addr: SocketAddr) -> Self {
+		let (connect_sender, connect_reciever) =
+			async_channel::bounded::<Result<TcpStream, NetworkError>>(1);
 		let client = Self {
 			runtime: Runtime::new().expect("Could not create a tokio runtime"),
 			connection_event_reciever: connect_reciever,
 			net_thread_connection: None,
-			registered_recievers: None,
 		};
 		info!("Connecting...");
 		client.runtime.spawn(connect(addr, connect_sender));
@@ -145,31 +168,43 @@ impl NetworkClient {
 	}
 }
 
-fn check_connect(client: Option<ResMut<NetworkClient>>) {
+fn check_connect(
+	client: Option<ResMut<NetworkClient>>,
+	registered_recievers: Option<ResMut<RegisteredRecievers>>,
+	mut net_errors: EventWriter<NetworkError>,
+) {
 	if let Some(mut c) = client {
 		if let Ok(x) = c.connection_event_reciever.try_recv() {
-			if let Some(packets) = c.registered_recievers.take() {
-				let (socket_reader, socket_writer) = x.into_split();
+			match x {
+				Ok(stream) => {
+					if let Some(mut registered_recievers) = registered_recievers {
+						if let Some(packets) = registered_recievers.registered_recievers.take() {
+							let (socket_reader, socket_writer) = stream.into_split();
 
-				let (send_write_buf, recieve_write_buf) = async_channel::unbounded::<WriteBuf>();
+							let (send_write_buf, recieve_write_buf) =
+								async_channel::unbounded::<WriteBuf>();
 
-				let mut sender = BTreeMap::new();
-				let mut reciever = BTreeMap::new();
-				for packet in packets {
-					let (send_read_buf, recieve_read_buf) =
-						async_channel::unbounded::<ReadBuffer>();
-					sender.insert(packet, send_read_buf);
-					reciever.insert(packet, recieve_read_buf);
+							let mut sender = BTreeMap::new();
+							let mut reciever = BTreeMap::new();
+							for packet in packets {
+								let (send_read_buf, recieve_read_buf) =
+									async_channel::unbounded::<ReadBuffer>();
+								sender.insert(packet, send_read_buf);
+								reciever.insert(packet, recieve_read_buf);
+							}
+
+							c.runtime.spawn(read_messages(socket_reader, sender));
+							c.runtime
+								.spawn(dispatch_messages(socket_writer, recieve_write_buf));
+
+							c.net_thread_connection = Some(NetThreadConnection {
+								send_write_buf,
+								reciever,
+							})
+						}
+					}
 				}
-
-				c.runtime.spawn(read_messages(socket_reader, sender));
-				c.runtime
-					.spawn(dispatch_messages(socket_writer, recieve_write_buf));
-
-				c.net_thread_connection = Some(NetThreadConnection {
-					send_write_buf,
-					reciever,
-				})
+				Err(e) => net_errors.send(e),
 			}
 		}
 	}
@@ -225,7 +260,9 @@ impl AppNetworkClientMessage for App {
 
 		self.add_system_to_stage(CoreStage::PreUpdate, check_read::<INDEX>);
 
-		if let Some(mut network_client) = self.world.get_resource_mut::<NetworkClient>() {
+		self.init_resource::<RegisteredRecievers>();
+
+		if let Some(mut network_client) = self.world.get_resource_mut::<RegisteredRecievers>() {
 			if let Some(registered_recievers) = &mut network_client.registered_recievers {
 				registered_recievers.push(INDEX);
 			} else {

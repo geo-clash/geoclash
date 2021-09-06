@@ -84,7 +84,7 @@ fn hover_city(
 					}
 				}
 			}
-			info!(
+			trace!(
 				"closest {}  name {}",
 				closest_index.unwrap(),
 				COUNTRIES[closest_index.unwrap()].name

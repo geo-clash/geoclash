@@ -5,20 +5,10 @@ pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_plugin(ClientNetworkPlugin)
-			.insert_resource(NetworkClient::new("127.0.0.1:2453"))
-			.net_listen::<{ ServerPacket::Connect as u16 }>()
-			.add_system(on_connect)
-			.net_listen::<{ ServerPacket::ServerInfo as u16 }>()
+		app.net_listen::<{ ServerPacket::ServerInfo as u16 }>()
 			.add_system(on_server_info)
 			.net_listen::<{ ServerPacket::InvalidLogin as u16 }>()
 			.add_system(on_invalid_login);
-	}
-}
-
-fn on_connect(mut events: EventReader<EventReadBuffer<{ ServerPacket::Connect as u16 }>>) {
-	for _ in events.iter() {
-		info!("Connected!");
 	}
 }
 

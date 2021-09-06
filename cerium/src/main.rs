@@ -18,7 +18,6 @@ fn main() {
 		.add_plugin(world::WorldPlugin)
 		.add_plugin(city::CityPlugin)
 		.add_plugin(info::InfoPlugin)
-		.add_plugin(network::NetworkPlugin)
 		.add_plugin(connect_ui::ConnectUIPlugin)
 		.add_startup_system(setup.system())
 		.run();
