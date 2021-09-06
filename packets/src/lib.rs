@@ -21,6 +21,7 @@ packet_enum! { ClientPacket;
 }
 
 packet_enum! { ServerPacket;
+	Connect,
 	PacketLengthInvalid,
 	ServerInfo,
 	InvalidLogin,
@@ -30,6 +31,7 @@ packet_enum! { ServerPacket;
 	CountryInfo
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct WriteBuf(Vec<u8>);
 
 impl WriteBuf {
@@ -69,7 +71,7 @@ mod tests {
 	fn serialize_enum() {
 		assert_eq!(
 			WriteBuf::new_server_packet(ServerPacket::ServerInfo).inner(),
-			&[0, 1]
+			&[0, 2]
 		);
 	}
 	#[test]
@@ -78,7 +80,7 @@ mod tests {
 			WriteBuf::new_server_packet(ServerPacket::ServerInfo)
 				.push(6_u8)
 				.inner(),
-			&[0, 1, 6]
+			&[0, 2, 6]
 		);
 	}
 	#[test]
@@ -88,7 +90,7 @@ mod tests {
 				.push(-90_i128)
 				.inner(),
 			&[
-				0, 1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				0, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 				166
 			]
 		);
@@ -100,14 +102,14 @@ mod tests {
 			WriteBuf::new_server_packet(ServerPacket::ServerInfo)
 				.push(String::from("hello"))
 				.inner(),
-			&[0, 1, 0, 5, 104, 101, 108, 108, 111]
+			&[0, 2, 0, 5, 104, 101, 108, 108, 111]
 		);
 	}
 
 	#[test]
 	fn deserialize_enum() {
 		assert_eq!(
-			ReadBuffer::new(vec![0, 2]).read_server_packet().unwrap(),
+			ReadBuffer::new(vec![0, 3]).read_server_packet().unwrap(),
 			ServerPacket::InvalidLogin
 		);
 	}

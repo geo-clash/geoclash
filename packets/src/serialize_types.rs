@@ -13,7 +13,7 @@ impl fmt::Display for ServerInfo {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
-			"{}:\nAbount: {}\nHosted by {}.",
+			"\n{}:\n    About: {}\n    Hosted by {}.",
 			self.name, self.description, self.host
 		)
 	}

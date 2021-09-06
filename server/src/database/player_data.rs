@@ -1,4 +1,4 @@
-use net::{Authentication, CountryId};
+use net::packets::*;
 
 // Argon2 with default params (Argon2id v19)
 lazy_static! {

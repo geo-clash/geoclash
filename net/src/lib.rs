@@ -1,4 +1,4 @@
-pub use packets::*;
+pub extern crate packets;
 pub use tokio::runtime::Runtime;
 pub extern crate tokio;
 pub use tokio::sync::mpsc;
@@ -36,7 +36,7 @@ pub enum ReadResponse {
 
 impl RemoteConnection {
 	// Write data back to the client
-	pub async fn socket_write(buf: &mut WriteBuf, socket: &mut OwnedWriteHalf) {
+	pub async fn socket_write(buf: &packets::WriteBuf, socket: &mut OwnedWriteHalf) {
 		let buffer = buf.inner();
 		let len = buffer.len() as u32;
 		info!("buf {}  {:?}", len, buffer);
@@ -47,7 +47,6 @@ impl RemoteConnection {
 		}
 	}
 	pub async fn read_length<'a>(buf: &mut Vec<u8>, socket: &mut OwnedReadHalf) -> ReadResponse {
-		println!("read length begin");
 		let length = match socket.read_u32().await {
 			Ok(len) => len as usize,
 			Err(err) => {
@@ -59,7 +58,6 @@ impl RemoteConnection {
 				return ReadResponse::Error;
 			}
 		};
-		println!("Got length");
 		if length > buf.len() {
 			return ReadResponse::PacketLengthTooLong;
 		}
