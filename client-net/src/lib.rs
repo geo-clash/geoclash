@@ -156,7 +156,7 @@ async fn read_messages(mut connection: OwnedReadHalf, sender: BTreeMap<u16, Send
 impl NetworkClient {
 	pub fn new(addr: SocketAddr) -> Self {
 		let (connect_sender, connect_reciever) =
-			async_channel::bounded::<Result<TcpStream, NetworkError>>(1);
+			async_channel::unbounded::<Result<TcpStream, NetworkError>>();
 		let client = Self {
 			runtime: Runtime::new().expect("Could not create a tokio runtime"),
 			connection_event_reciever: connect_reciever,
@@ -177,8 +177,8 @@ fn check_connect(
 		if let Ok(x) = c.connection_event_reciever.try_recv() {
 			match x {
 				Ok(stream) => {
-					if let Some(mut registered_recievers) = registered_recievers {
-						if let Some(packets) = registered_recievers.registered_recievers.take() {
+					if let Some(registered_recievers) = registered_recievers {
+						if let Some(packets) = registered_recievers.registered_recievers.clone() {
 							let (socket_reader, socket_writer) = stream.into_split();
 
 							let (send_write_buf, recieve_write_buf) =
