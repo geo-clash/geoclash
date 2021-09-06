@@ -38,7 +38,7 @@ async fn handle_packet(
 		ClientPacket::SignUp => {
 			let auth = Authentication::deserialize(read_buffer)?;
 			info!("signup Auth {:?}", auth);
-			let response = if PlayerData::pass_secure(&auth.password) {
+			let response = if PlayerData::pass_secure(&auth) {
 				if db.get_player_by_username(&auth.username).is_some() {
 					ServerPacket::InvalidSignup
 				} else {
