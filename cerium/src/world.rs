@@ -1,17 +1,12 @@
-use std::{cmp, collections::BTreeMap};
+use bevy::{math::Vec3A, prelude::*, render::pipeline::PrimitiveTopology};
 
-use bevy::{
-	asset::{Asset, LoadContext},
-	math::{DVec2, Vec3A},
-	prelude::*,
-	render::{mesh::Indices, pipeline::PrimitiveTopology},
-};
+struct WorldTexture(Handle<Texture>);
 
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_startup_system(setup);
+		app.add_startup_system(setup).add_system(load_world);
 	}
 
 	fn name(&self) -> &str {
@@ -43,7 +38,6 @@ fn get_mesh(order: usize, radius: f32) -> Mesh {
 	subdivided.reserve_exact(order.pow(2));
 
 	let edge_frac = 1. / order as f32;
-	let half_edge_frac = 0.5 / order as f32;
 
 	for index in (0..vertices.len()).step_by(3) {
 		let (a, b, c) = (vertices[index], vertices[index + 1], vertices[index + 2]);
@@ -110,24 +104,32 @@ fn get_mesh(order: usize, radius: f32) -> Mesh {
 	mesh
 }
 
-fn setup(
+fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
+	let texture_handle: Handle<Texture> = asset_server.load("textures/height_map.png");
+	commands.insert_resource(WorldTexture(texture_handle));
+}
+
+fn load_world(
+	world_texture: Option<Res<WorldTexture>>,
+	textures: Res<Assets<Texture>>,
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>,
-	//asset_server: Res<AssetServer>,
 ) {
-	//let texture_handle: Handle<Texture> = asset_server.load("textures/colour_map.jpg");
-	//Assets::get(&self, texture_handle)
-	//asset_server.get_path_asset_loader().unwrap();
-
-	commands.spawn_bundle(PbrBundle {
-		mesh: meshes.add(get_mesh(8, 2.)),
-		material: materials.add(StandardMaterial {
-			roughness: 0.7,
-			base_color: Color::rgba_u8(5, 5, 5, 255),
-			..Default::default()
-		}),
-		transform: Transform::from_xyz(0.0, 0.0, 0.0),
-		..Default::default()
-	});
+	if let Some(world_texture) = world_texture {
+		if let Some(height_map) = textures.get(&world_texture.0) {
+			info!("Dims {:?}", height_map.size);
+			commands.spawn_bundle(PbrBundle {
+				mesh: meshes.add(get_mesh(8, 2.)),
+				material: materials.add(StandardMaterial {
+					roughness: 0.7,
+					base_color: Color::rgba_u8(5, 5, 5, 255),
+					..Default::default()
+				}),
+				transform: Transform::from_xyz(0.0, 0.0, 0.0),
+				..Default::default()
+			});
+			commands.remove_resource::<WorldTexture>();
+		}
+	}
 }
