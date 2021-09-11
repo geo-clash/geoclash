@@ -1,4 +1,37 @@
-use bevy::{math::Vec3A, prelude::*, render::pipeline::PrimitiveTopology};
+use bevy::{
+	math::Vec3A,
+	prelude::*,
+	render::{
+		pipeline::{PipelineDescriptor, PrimitiveTopology, RenderPipeline},
+		shader::{ShaderStage, ShaderStages},
+	},
+};
+
+const VERTEX_SHADER: &str = r#"
+#version 450
+layout(location = 0) in vec3 Vertex_Position;
+layout(location = 1) in vec3 Vertex_Color;
+layout(location = 0) out vec3 v_color;
+layout(set = 0, binding = 0) uniform CameraViewProj {
+    mat4 ViewProj;
+};
+layout(set = 1, binding = 0) uniform Transform {
+    mat4 Model;
+};
+void main() {
+    gl_Position = ViewProj * Model * vec4(Vertex_Position, 1.0);
+    v_color = Vertex_Color;
+}
+"#;
+
+const FRAGMENT_SHADER: &str = r#"
+#version 450
+layout(location = 0) out vec4 o_Target;
+layout(location = 0) in vec3 v_color;
+void main() {
+    o_Target = vec4(v_color, 1.0);
+}
+"#;
 
 struct WorldTexture(Handle<Texture>);
 
@@ -21,7 +54,7 @@ fn sphere_uv(d: &Vec3A) -> Vec2 {
 	)
 }
 
-fn height(d: &Vec3A, texture: &Texture) -> f32 {
+fn height(d: &Vec3A, texture: &Texture) -> u8 {
 	let sphere_uv = sphere_uv(d);
 
 	if sphere_uv.x > 1. && sphere_uv.y > 1. {
@@ -32,12 +65,10 @@ fn height(d: &Vec3A, texture: &Texture) -> f32 {
 		(Vec2::new((dims.width - 1) as f32, (dims.height - 1) as f32) * sphere_uv).as_u32();
 
 	let pixel_index = ((dims.width) * (pixel_coord.y) + (pixel_coord.x)) as usize * 4;
-	let pixel_value_r = u8::MAX - texture.data[pixel_index];
-
-	pixel_value_r as f32 / u8::MAX as f32
+	texture.data[pixel_index]
 }
 
-fn get_mesh(order: usize, radius: f32, height_map: &Texture) -> Mesh {
+fn get_mesh(order: usize, radius: f32, height_map: &Texture, height_radius: f32) -> Mesh {
 	let triangles = [
 		0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4,
 	];
@@ -99,38 +130,51 @@ fn get_mesh(order: usize, radius: f32, height_map: &Texture) -> Mesh {
 			}
 		}
 	}
+	let len = subdivided.len();
 
-	let colours = subdivided.clone();
+	let mut points: Vec<[f32; 3]> = Vec::new();
+	let mut colours: Vec<[f32; 3]> = Vec::new();
+	let mut uvs: Vec<[f32; 2]> = Vec::new();
+	points.reserve_exact(len);
+	colours.reserve_exact(len);
+	uvs.reserve_exact(len);
 
-	let points = subdivided
-		.iter()
-		.map(|&p| p.normalize())
-		.map(|p| p * (height(&p, height_map) + radius))
-		.map(|p| p.into())
-		.collect::<Vec<[f32; 3]>>();
+	let mut max_tri_height = 0;
 
-	let colour = colours
-		.iter()
-		.map(|&p| [p.x / 2., 0., 0., 1.])
-		.collect::<Vec<[f32; 4]>>();
-
-	let uv = colours.iter().map(|&_| [0., 0.]).collect::<Vec<[f32; 2]>>();
+	for (index, pos) in subdivided.iter().enumerate() {
+		let normalized = pos.normalize();
+		let height = height(&normalized, height_map);
+		points.push(
+			(normalized * ((height as f32 / u8::MAX as f32) * height_radius + radius)).into(),
+		);
+		max_tri_height = max_tri_height.max(height);
+		if index % 3 == 2 {
+			let colour = if max_tri_height > 0 {
+				[0.19, 0.65, 0.32]
+			} else {
+				[0.30, 0.38, 0.87]
+			};
+			colours.extend([colour; 3]);
+			uvs.extend([[0., 0.]; 3]);
+			max_tri_height = 0;
+		}
+	}
 
 	let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
 	//mesh.set_indices(Some(indices));
 	mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, points);
-	mesh.set_attribute(Mesh::ATTRIBUTE_COLOR, colour);
-	mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, uv);
+	mesh.set_attribute(Mesh::ATTRIBUTE_COLOR, colours);
+	mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
 
 	mesh.compute_flat_normals();
 
-	info!("Generated mesh with {} verticies", colours.len());
+	info!("Generated mesh with {} verticies", len);
 
 	mesh
 }
 
 fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
-	let texture_handle: Handle<Texture> = asset_server.load("textures/test.png");
+	let texture_handle: Handle<Texture> = asset_server.load("textures/height_map.png");
 	commands.insert_resource(WorldTexture(texture_handle));
 }
 
@@ -139,18 +183,25 @@ fn load_world(
 	textures: Res<Assets<Texture>>,
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
-	mut materials: ResMut<Assets<StandardMaterial>>,
+	mut pipelines: ResMut<Assets<PipelineDescriptor>>,
+	mut shaders: ResMut<Assets<Shader>>,
 ) {
 	if let Some(world_texture) = world_texture {
 		if let Some(height_map) = textures.get(&world_texture.0) {
+			// Create a new shader pipeline
+			let pipeline_handle = pipelines.add(PipelineDescriptor::default_config(ShaderStages {
+				vertex: shaders.add(Shader::from_glsl(ShaderStage::Vertex, VERTEX_SHADER)),
+				fragment: Some(
+					shaders.add(Shader::from_glsl(ShaderStage::Fragment, FRAGMENT_SHADER)),
+				),
+			}));
 			info!("Dims {:?}, len {}", height_map.size, height_map.data.len());
 			commands.spawn_bundle(PbrBundle {
-				mesh: meshes.add(get_mesh(100, 2., height_map)),
-				material: materials.add(StandardMaterial {
-					roughness: 0.7,
-					base_color: Color::rgba_u8(5, 5, 5, 255),
-					..Default::default()
-				}),
+				mesh: meshes.add(get_mesh(50, 2., height_map, 0.3)),
+				render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(
+					pipeline_handle,
+				)]),
+
 				transform: Transform::from_xyz(0.0, 0.0, 0.0),
 				..Default::default()
 			});
