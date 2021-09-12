@@ -57,14 +57,7 @@ fn connect_ui(
 			ui.add(TextEdit::singleline(&mut state.password).password(true));
 
 			ui.add_space(10.);
-			if ui
-				.add(Checkbox::new(&mut state.new_user, "Register a new account"))
-				.clicked()
-			{
-				state.new_user = true;
-			} else {
-				state.new_user = false;
-			}
+			ui.add(Checkbox::new(&mut state.new_user, "Register a new account"));
 
 			if let Some(status) = &mut state.status {
 				ui.add_space(5.);
