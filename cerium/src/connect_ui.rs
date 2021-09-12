@@ -6,13 +6,13 @@ use bevy_egui::{
 	EguiContext, EguiPlugin,
 };
 use client_net::*;
-use egui::widgets::{Button, TextEdit};
+use egui::widgets::{Button, Checkbox, TextEdit};
 
 pub struct ConnectUIPlugin;
 
 impl Plugin for ConnectUIPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_system(ui_example)
+		app.add_system(connect_ui)
 			.add_plugin(ClientNetworkPlugin)
 			.add_plugin(EguiPlugin)
 			.init_resource::<ConnectUIState>()
@@ -24,6 +24,7 @@ impl Plugin for ConnectUIPlugin {
 
 #[derive(Default)]
 struct ConnectUIState {
+	new_user: bool,
 	server_address: String,
 	username: String,
 	password: String,
@@ -31,7 +32,7 @@ struct ConnectUIState {
 	sent: bool,
 }
 
-fn ui_example(
+fn connect_ui(
 	egui_context: ResMut<EguiContext>,
 	mut state: ResMut<ConnectUIState>,
 	mut commands: Commands,
@@ -54,6 +55,16 @@ fn ui_example(
 			ui.add_space(10.);
 			ui.label("Password");
 			ui.add(TextEdit::singleline(&mut state.password).password(true));
+
+			ui.add_space(10.);
+			if ui
+				.add(Checkbox::new(&mut state.new_user, "Register a new account"))
+				.clicked()
+			{
+				state.new_user = true;
+			} else {
+				state.new_user = false;
+			}
 
 			if let Some(status) = &mut state.status {
 				ui.add_space(5.);
