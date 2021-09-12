@@ -1,39 +1,10 @@
-use bevy::{
-	math::Vec3A,
-	prelude::*,
-	render::{
-		pipeline::{PipelineDescriptor, PrimitiveTopology, RenderPipeline},
-		shader::{ShaderStage, ShaderStages},
-	},
-};
+use bevy::{math::Vec3A, prelude::*, render::pipeline::PrimitiveTopology};
 
-const VERTEX_SHADER: &str = r#"
-#version 450
-layout(location = 0) in vec3 Vertex_Position;
-layout(location = 1) in vec3 Vertex_Color;
-layout(location = 0) out vec3 v_color;
-layout(set = 0, binding = 0) uniform CameraViewProj {
-    mat4 ViewProj;
-};
-layout(set = 1, binding = 0) uniform Transform {
-    mat4 Model;
-};
-void main() {
-    gl_Position = ViewProj * Model * vec4(Vertex_Position, 1.0);
-    v_color = Vertex_Color;
+use crate::city::add_cities;
+
+pub struct WorldTexture {
+	pub handle: Handle<Texture>,
 }
-"#;
-
-const FRAGMENT_SHADER: &str = r#"
-#version 450
-layout(location = 0) out vec4 o_Target;
-layout(location = 0) in vec3 v_color;
-void main() {
-    o_Target = vec4(v_color, 1.0);
-}
-"#;
-
-struct WorldTexture(Handle<Texture>);
 
 pub struct WorldPlugin;
 
@@ -47,135 +18,144 @@ impl Plugin for WorldPlugin {
 	}
 }
 
-fn sphere_uv(d: &Vec3A) -> Vec2 {
-	Vec2::new(
-		0.5 + f32::atan2(d.x, d.z) / (std::f32::consts::PI * 2.),
-		0.5 - d.y.asin() / std::f32::consts::PI,
-	)
+pub struct HeightmapSampler<'a> {
+	texture: &'a Texture,
+	pub radius: f32,
+	pub height_radius: f32,
 }
-
-fn height(d: &Vec3A, texture: &Texture) -> u8 {
-	let sphere_uv = sphere_uv(d);
-
-	if sphere_uv.x > 1. && sphere_uv.y > 1. {
-		error!("More than one {:?}", sphere_uv);
+impl<'a> HeightmapSampler<'a> {
+	fn sphere_uv(d: &Vec3A) -> Vec2 {
+		Vec2::new(
+			0.5 + f32::atan2(d.x, d.z) / (std::f32::consts::PI * 2.),
+			0.5 - d.y.asin() / std::f32::consts::PI,
+		)
 	}
-	let dims = texture.size;
-	let pixel_coord =
-		(Vec2::new((dims.width - 1) as f32, (dims.height - 1) as f32) * sphere_uv).as_u32();
 
-	let pixel_index = ((dims.width) * (pixel_coord.y) + (pixel_coord.x)) as usize * 4;
-	texture.data[pixel_index]
-}
+	pub fn height(&self, d: &Vec3A) -> u8 {
+		let sphere_uv = Self::sphere_uv(d);
 
-fn get_mesh(order: usize, radius: f32, height_map: &Texture, height_radius: f32) -> Mesh {
-	let triangles = [
-		0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4,
-	];
-	let vertices = [
-		// down
-		Vec3A::new(0., -1., 0.),
-		// forward
-		Vec3A::new(0., 0., 1.),
-		// left
-		Vec3A::new(-1., 0., 0.),
-		// back
-		Vec3A::new(0., 0., -1.),
-		// right
-		Vec3A::new(1., 0., 0.),
-		// up
-		Vec3A::new(0., 1., 0.),
-	];
-	let vertices: [Vec3A; 24] = triangles.map(|i| vertices[i]);
+		if sphere_uv.x > 1. && sphere_uv.y > 1. {
+			error!("More than one {:?}", sphere_uv);
+		}
+		let dims = self.texture.size;
+		let pixel_coord =
+			(Vec2::new((dims.width - 1) as f32, (dims.height - 1) as f32) * sphere_uv).as_u32();
 
-	let mut subdivided: Vec<Vec3A> = Vec::new();
-	subdivided.reserve_exact(order.pow(2));
+		let pixel_index = ((dims.width) * (pixel_coord.y) + (pixel_coord.x)) as usize * 4;
+		self.texture.data[pixel_index]
+	}
+	fn get_mesh(&self, order: usize) -> [Mesh; 2] {
+		let triangles = [
+			0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4,
+		];
+		let vertices = [
+			// down
+			Vec3A::new(0., -1., 0.),
+			// forward
+			Vec3A::new(0., 0., 1.),
+			// left
+			Vec3A::new(-1., 0., 0.),
+			// back
+			Vec3A::new(0., 0., -1.),
+			// right
+			Vec3A::new(1., 0., 0.),
+			// up
+			Vec3A::new(0., 1., 0.),
+		];
+		let vertices: [Vec3A; 24] = triangles.map(|i| vertices[i]);
 
-	let edge_frac = 1. / order as f32;
+		let mut subdivided: Vec<Vec3A> = Vec::new();
+		subdivided.reserve_exact(order.pow(2));
 
-	for index in (0..vertices.len()).step_by(3) {
-		let (a, b, c) = (vertices[index], vertices[index + 1], vertices[index + 2]);
-		for y in 0..order {
-			let y_frac = y as f32 / order as f32;
-			let row_pos_b = b.lerp(a, y_frac);
-			let row_pos_c = c.lerp(a, y_frac);
-			let row_divisor = (order - y) as f32;
+		let edge_frac = 1. / order as f32;
 
-			if y == order - 1 {
-				subdivided.push(row_pos_b);
-				subdivided.push(row_pos_c);
-				subdivided.push(a);
-			}
+		for index in (0..vertices.len()).step_by(3) {
+			let (a, b, c) = (vertices[index], vertices[index + 1], vertices[index + 2]);
+			for y in 0..order {
+				let y_frac = y as f32 / order as f32;
+				let row_pos_b = b.lerp(a, y_frac);
+				let row_pos_c = c.lerp(a, y_frac);
+				let row_divisor = (order - y) as f32;
 
-			let next_row_pos_b = b.lerp(a, y_frac + edge_frac);
-			let next_row_pos_c = c.lerp(a, y_frac + edge_frac);
-			let next_row_divisor = (order - y - 1) as f32;
+				if y == order - 1 {
+					subdivided.push(row_pos_b);
+					subdivided.push(row_pos_c);
+					subdivided.push(a);
+				}
 
-			for x in 0..(order - y) {
-				let lower_left = row_pos_b.lerp(row_pos_c, x as f32 / row_divisor);
-				let lower_right = row_pos_b.lerp(row_pos_c, (x + 1) as f32 / row_divisor);
-				let upper_left = next_row_pos_b.lerp(next_row_pos_c, x as f32 / next_row_divisor);
+				let next_row_pos_b = b.lerp(a, y_frac + edge_frac);
+				let next_row_pos_c = c.lerp(a, y_frac + edge_frac);
+				let next_row_divisor = (order - y - 1) as f32;
 
-				subdivided.push(lower_left);
-				subdivided.push(lower_right);
-				subdivided.push(upper_left);
+				for x in 0..(order - y) {
+					let lower_left = row_pos_b.lerp(row_pos_c, x as f32 / row_divisor);
+					let lower_right = row_pos_b.lerp(row_pos_c, (x + 1) as f32 / row_divisor);
+					let upper_left =
+						next_row_pos_b.lerp(next_row_pos_c, x as f32 / next_row_divisor);
 
-				if x < (order - y - 1) {
-					let upper_right =
-						next_row_pos_b.lerp(next_row_pos_c, (x + 1) as f32 / next_row_divisor);
+					subdivided.push(lower_left);
 					subdivided.push(lower_right);
-					subdivided.push(upper_right);
 					subdivided.push(upper_left);
+
+					if x < (order - y - 1) {
+						let upper_right =
+							next_row_pos_b.lerp(next_row_pos_c, (x + 1) as f32 / next_row_divisor);
+						subdivided.push(lower_right);
+						subdivided.push(upper_right);
+						subdivided.push(upper_left);
+					}
 				}
 			}
 		}
-	}
-	let len = subdivided.len();
+		let len = subdivided.len();
 
-	let mut points: Vec<[f32; 3]> = Vec::new();
-	let mut colours: Vec<[f32; 3]> = Vec::new();
-	let mut uvs: Vec<[f32; 2]> = Vec::new();
-	points.reserve_exact(len);
-	colours.reserve_exact(len);
-	uvs.reserve_exact(len);
+		let mut land: (Vec<[f32; 3]>, Vec<[f32; 2]>) = (Vec::new(), Vec::new());
+		let mut water: (Vec<[f32; 3]>, Vec<[f32; 2]>) = (Vec::new(), Vec::new());
 
-	let mut max_tri_height = 0;
+		for index in (0..subdivided.len()).step_by(3) {
+			let mut max_tri_height = 0;
+			let positions = subdivided[index..index + 3]
+				.iter()
+				.map(|pos| {
+					let normalized = pos.normalize();
+					let height = self.height(&normalized);
+					max_tri_height = max_tri_height.max(height);
+					(normalized
+						* ((height as f32 / u8::MAX as f32) * self.height_radius + self.radius))
+						.to_array()
+				})
+				.collect::<Vec<[f32; 3]>>();
 
-	for (index, pos) in subdivided.iter().enumerate() {
-		let normalized = pos.normalize();
-		let height = height(&normalized, height_map);
-		points.push(
-			(normalized * ((height as f32 / u8::MAX as f32) * height_radius + radius)).into(),
-		);
-		max_tri_height = max_tri_height.max(height);
-		if index % 3 == 2 {
-			let colour = if max_tri_height > 0 {
-				[0.19, 0.65, 0.32]
+			if max_tri_height > 0 {
+				land.0.extend(positions);
+				land.1.extend([[0., 0.]; 3]);
 			} else {
-				[0.30, 0.38, 0.87]
-			};
-			colours.extend([colour; 3]);
-			uvs.extend([[0., 0.]; 3]);
-			max_tri_height = 0;
+				water.0.extend(positions);
+				water.1.extend([[0., 0.]; 3]);
+			}
 		}
+
+		let mut land_mesh = Mesh::new(PrimitiveTopology::TriangleList);
+		land_mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, land.0);
+		land_mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, land.1);
+		land_mesh.compute_flat_normals();
+
+		let mut water_mesh = Mesh::new(PrimitiveTopology::TriangleList);
+		water_mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, water.0);
+		water_mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, water.1);
+		water_mesh.compute_flat_normals();
+
+		info!("Generated mesh with {} verticies", len);
+
+		[land_mesh, water_mesh]
 	}
-
-	let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-	//mesh.set_indices(Some(indices));
-	mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, points);
-	mesh.set_attribute(Mesh::ATTRIBUTE_COLOR, colours);
-	mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-
-	mesh.compute_flat_normals();
-
-	info!("Generated mesh with {} verticies", len);
-
-	mesh
 }
 
 fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
 	let texture_handle: Handle<Texture> = asset_server.load("textures/height_map.png");
-	commands.insert_resource(WorldTexture(texture_handle));
+	commands.insert_resource(WorldTexture {
+		handle: texture_handle,
+	});
 }
 
 fn load_world(
@@ -183,28 +163,40 @@ fn load_world(
 	textures: Res<Assets<Texture>>,
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
-	mut pipelines: ResMut<Assets<PipelineDescriptor>>,
-	mut shaders: ResMut<Assets<Shader>>,
+	mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
 	if let Some(world_texture) = world_texture {
-		if let Some(height_map) = textures.get(&world_texture.0) {
-			// Create a new shader pipeline
-			let pipeline_handle = pipelines.add(PipelineDescriptor::default_config(ShaderStages {
-				vertex: shaders.add(Shader::from_glsl(ShaderStage::Vertex, VERTEX_SHADER)),
-				fragment: Some(
-					shaders.add(Shader::from_glsl(ShaderStage::Fragment, FRAGMENT_SHADER)),
-				),
-			}));
+		if let Some(height_map) = textures.get(&world_texture.handle) {
 			info!("Dims {:?}, len {}", height_map.size, height_map.data.len());
+			let sampler = HeightmapSampler {
+				texture: height_map,
+				radius: 2.,
+				height_radius: 0.3,
+			};
+			let [land, ocean] = sampler.get_mesh(70);
 			commands.spawn_bundle(PbrBundle {
-				mesh: meshes.add(get_mesh(50, 2., height_map, 0.3)),
-				render_pipelines: RenderPipelines::from_pipelines(vec![RenderPipeline::new(
-					pipeline_handle,
-				)]),
-
+				mesh: meshes.add(land),
+				material: materials.add(StandardMaterial {
+					base_color: Color::rgb_u8(51, 189, 62),
+					roughness: 0.1,
+					..Default::default()
+				}),
 				transform: Transform::from_xyz(0.0, 0.0, 0.0),
 				..Default::default()
 			});
+			commands.spawn_bundle(PbrBundle {
+				mesh: meshes.add(ocean),
+				material: materials.add(StandardMaterial {
+					base_color: Color::rgb_u8(66, 135, 245),
+					roughness: 0.1,
+					..Default::default()
+				}),
+				transform: Transform::from_xyz(0.0, 0.0, 0.0),
+				..Default::default()
+			});
+
+			add_cities(&mut commands, meshes, materials, &sampler);
+
 			commands.remove_resource::<WorldTexture>();
 		}
 	}

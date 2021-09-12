@@ -17,7 +17,7 @@ fn setup(mut commands: Commands) {
 		.insert(MovableCamera {
 			old_cursor_position: None,
 			velocity: Vec2::ZERO,
-			rotation: Quat::from_vec4(Vec4::new(0.5, -0.5, -0.5, 0.5)),
+			rotation: Quat::IDENTITY,
 			distance: 8.,
 			friction: 0.9,
 		})
