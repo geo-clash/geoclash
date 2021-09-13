@@ -4,6 +4,7 @@ pub use net::packets::*;
 use net::tokio::sync::{Mutex, MutexGuard};
 use net::{
 	tokio::net::{
+		lookup_host,
 		tcp::{OwnedReadHalf, OwnedWriteHalf},
 		TcpStream,
 	},
@@ -35,6 +36,10 @@ pub enum NetworkError {
 	NotConnected,
 	#[error("An error occured when trying to connect: {0}")]
 	Connection(std::io::Error),
+	#[error("{0}, Could not find address '{1}'")]
+	ParseAdressError(std::io::Error, String),
+	#[error("Could not find address '{0}'")]
+	ParseAdress(String),
 	#[error("An error occured when trying to send data between threads")]
 	SendData,
 }
@@ -74,10 +79,32 @@ pub struct RegisteredRecievers {
 }
 
 async fn connect(
-	addr: SocketAddr,
+	addr: String,
 	connect_sender: Sender<Result<TcpStream, NetworkError>>,
 ) -> Result<(), NetworkError> {
-	let stream = match TcpStream::connect(addr)
+	let mut iter = match lookup_host(&addr)
+		.await
+		.map_err(|e| NetworkError::ParseAdressError(e, addr.clone()))
+	{
+		Ok(x) => x,
+		Err(e) => {
+			return connect_sender
+				.send(Err(e))
+				.await
+				.map_err(|_| NetworkError::SendData)
+		}
+	};
+	let socket = match iter.next().ok_or(NetworkError::ParseAdress(addr.clone())) {
+		Ok(x) => x,
+		Err(e) => {
+			return connect_sender
+				.send(Err(e))
+				.await
+				.map_err(|_| NetworkError::SendData)
+		}
+	};
+
+	let stream = match TcpStream::connect(socket)
 		.await
 		.map_err(|e| NetworkError::Connection(e))
 	{
@@ -154,7 +181,7 @@ async fn read_messages(mut connection: OwnedReadHalf, sender: BTreeMap<u16, Send
 }
 
 impl NetworkClient {
-	pub fn new(addr: SocketAddr) -> Self {
+	pub fn new(addr: String) -> Self {
 		let (connect_sender, connect_reciever) =
 			async_channel::unbounded::<Result<TcpStream, NetworkError>>();
 		let client = Self {

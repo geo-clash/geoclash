@@ -91,7 +91,7 @@ fn hover_city(
 				}
 			}
 			if let Some(ind) = closest_index {
-				info!("closest {}  name {}", ind, COUNTRIES[ind].name);
+				trace!("closest {}  name {}", ind, COUNTRIES[ind].name);
 			}
 		}
 	}

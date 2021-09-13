@@ -71,13 +71,9 @@ fn ui_example(
 					println!("Some required fields are missing");
 					state.status = Some("Some required fields are missing.".to_string());
 				} else {
-					if let Ok(remote) = state.server_address.parse::<SocketAddr>() {
-						state.status = Some("Connecting...".to_string());
-						let net_client = NetworkClient::new(remote);
-						commands.insert_resource(net_client);
-					} else {
-						state.status = Some(format!("Invalid address '{}'", state.server_address));
-					}
+					state.status = Some("Connecting...".to_string());
+					let net_client = NetworkClient::new(state.server_address.clone());
+					commands.insert_resource(net_client);
 				}
 			}
 		});

@@ -92,7 +92,7 @@ fn main() {
 	let (read_buf_sender, read_buf_reciever) =
 		async_channel::unbounded::<(ReadBuffer, Sender<WriteBuf>)>();
 
-	rt.spawn(server("127.0.0.1:2453", read_buf_sender));
+	rt.spawn(server("0.0.0.0:2453", read_buf_sender));
 
 	rt.block_on(handle_packets(read_buf_reciever));
 }
