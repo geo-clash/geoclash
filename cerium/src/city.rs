@@ -1,12 +1,13 @@
 use super::camera::MainCamera;
-use bevy::{prelude::*, render::camera::Camera};
+use crate::world::HeightmapSampler;
+use bevy::{math::Vec3A, prelude::*, render::camera::Camera};
 use game_statics::COUNTRIES;
 
 pub struct CityPlugin;
 
 impl Plugin for CityPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_startup_system(setup).add_system(hover_city);
+		app.add_system(hover_city);
 	}
 }
 
@@ -15,15 +16,16 @@ struct City {
 	pub id: usize,
 }
 
-fn setup(
-	mut commands: Commands,
+pub fn add_cities(
+	commands: &mut Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>,
+	height_map: &HeightmapSampler,
 ) {
 	const RADIUS: f32 = 2.;
 	for (id, country) in COUNTRIES.iter().enumerate() {
-		let lat: f32 = f32::to_radians(country.lat);
-		let lon: f32 = -f32::to_radians(country.long);
+		let lat: f32 = -f32::to_radians(country.lat);
+		let lon: f32 = f32::to_radians(country.long);
 
 		let sphere = meshes.add(Mesh::from(shape::Icosphere {
 			radius: 0.03,
@@ -34,15 +36,20 @@ fn setup(
 			roughness: 0.7,
 			..Default::default()
 		});
+		let position = Vec3A::new(
+			RADIUS * lat.cos() * lon.sin(),
+			-RADIUS * lat.sin(),
+			RADIUS * lat.cos() * lon.cos(),
+		)
+		.normalize();
+		let height = height_map.height(&position);
+		let position = position
+			* (height_map.radius + height as f32 / u8::MAX as f32 * height_map.height_radius);
 		commands
 			.spawn_bundle(PbrBundle {
 				mesh: sphere,
 				material: material,
-				transform: Transform::from_xyz(
-					-RADIUS * lat.cos() * lon.cos(),
-					RADIUS * lat.cos() * lon.sin(),
-					RADIUS * lat.sin(),
-				),
+				transform: Transform::from_translation(position.into()),
 				..Default::default()
 			})
 			.insert(City { id });
@@ -83,11 +90,9 @@ fn hover_city(
 					}
 				}
 			}
-			trace!(
-				"closest {}  name {}",
-				closest_index.unwrap(),
-				COUNTRIES[closest_index.unwrap()].name
-			);
+			if let Some(ind) = closest_index {
+				trace!("closest {}  name {}", ind, COUNTRIES[ind].name);
+			}
 		}
 	}
 }

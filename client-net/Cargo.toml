@@ -10,4 +10,4 @@ net = { path = "../net" }
 log = "0"
 thiserror = "1.0"
 async-channel = "1.6"
-bevy = { git = "https://github.com/bevyengine/bevy", features = ["dynamic"] }
+bevy = { git = "https://github.com/bevyengine/bevy" }
