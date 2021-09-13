@@ -26,8 +26,8 @@ impl Plugin for ClientNetworkPlugin {
 
 #[derive(thiserror::Error, Debug)]
 pub enum NetworkError {
-	#[error("Could not find server adress: {0}")]
-	AdressNotFound(std::io::Error),
+	#[error("Could not find server address: {0}")]
+	AddressNotFound(std::io::Error),
 	#[error("Could not find connection with id: {0}")]
 	ConnectionNotFound(SocketAddr),
 	#[error("Connection closed with id: {0}")]
@@ -37,9 +37,9 @@ pub enum NetworkError {
 	#[error("An error occured when trying to connect: {0}")]
 	Connection(std::io::Error),
 	#[error("{0}, Could not find address '{1}'")]
-	ParseAdressError(std::io::Error, String),
+	ParseAddressError(std::io::Error, String),
 	#[error("Could not find address '{0}'")]
-	ParseAdress(String),
+	ParseAddress(String),
 	#[error("An error occured when trying to send data between threads")]
 	SendData,
 }
@@ -84,7 +84,7 @@ async fn connect(
 ) -> Result<(), NetworkError> {
 	let mut iter = match lookup_host(&addr)
 		.await
-		.map_err(|e| NetworkError::ParseAdressError(e, addr.clone()))
+		.map_err(|e| NetworkError::ParseAddressError(e, addr.clone()))
 	{
 		Ok(x) => x,
 		Err(e) => {
@@ -94,7 +94,7 @@ async fn connect(
 				.map_err(|_| NetworkError::SendData)
 		}
 	};
-	let socket = match iter.next().ok_or(NetworkError::ParseAdress(addr.clone())) {
+	let socket = match iter.next().ok_or(NetworkError::ParseAddress(addr.clone())) {
 		Ok(x) => x,
 		Err(e) => {
 			return connect_sender
@@ -119,7 +119,7 @@ async fn connect(
 
 	let other_addr = match stream
 		.peer_addr()
-		.map_err(|e| NetworkError::AdressNotFound(e))
+		.map_err(|e| NetworkError::AddressNotFound(e))
 	{
 		Ok(x) => x,
 		Err(e) => {
