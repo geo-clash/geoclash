@@ -87,8 +87,25 @@ fn connect_ui(
 fn on_connect(
 	mut events: EventReader<EventReadBuffer<{ ServerPacket::Connect as u16 }>>,
 	mut state: ResMut<ConnectUIState>,
+	mut writer: EventWriter<WriteBuf>,
 ) {
 	for _ in events.iter() {
+		if state.new_user {
+			writer.send(
+				WriteBuf::new_client_packet(ClientPacket::SignUp).push(Authentication {
+					username: state.username,
+					password: state.password,
+				}),
+			);
+		} else {
+			writer.send(
+				WriteBuf::new_client_packet(ClientPacket::Login).push(Authentication {
+					username: state.username,
+					password: state.password,
+				}),
+			);
+		}
+
 		state.status = Some("Connected!".to_string());
 	}
 }
