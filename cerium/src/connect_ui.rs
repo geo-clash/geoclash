@@ -1,5 +1,3 @@
-use std::net::SocketAddr;
-
 use bevy::prelude::*;
 use bevy_egui::{
 	egui::{self, Label},
@@ -93,15 +91,15 @@ fn on_connect(
 		if state.new_user {
 			writer.send(
 				WriteBuf::new_client_packet(ClientPacket::SignUp).push(Authentication {
-					username: state.username,
-					password: state.password,
+					username: state.username.clone(),
+					password: state.password.clone(),
 				}),
 			);
 		} else {
 			writer.send(
 				WriteBuf::new_client_packet(ClientPacket::Login).push(Authentication {
-					username: state.username,
-					password: state.password,
+					username: state.username.clone(),
+					password: state.password.clone(),
 				}),
 			);
 		}
