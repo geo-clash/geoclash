@@ -21,6 +21,7 @@ pub fn add_cities(
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>,
 	height_map: &HeightmapSampler,
+	texture: &Texture,
 ) {
 	const RADIUS: f32 = 2.;
 	for (id, country) in COUNTRIES.iter().enumerate() {
@@ -42,7 +43,8 @@ pub fn add_cities(
 			RADIUS * lat.cos() * lon.cos(),
 		)
 		.normalize();
-		let height = height_map.height(&position);
+		println!("{} Pos: {}", country.name, position);
+		let height = height_map.height(&position, texture);
 		let position = position
 			* (height_map.radius + height as f32 / u8::MAX as f32 * height_map.height_radius);
 		commands
