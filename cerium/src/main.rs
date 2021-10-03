@@ -3,7 +3,6 @@ mod camera;
 mod city;
 mod connect_ui;
 mod info;
-mod network;
 mod units;
 mod world;
 

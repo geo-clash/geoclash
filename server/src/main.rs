@@ -18,10 +18,11 @@ struct Country {
 async fn handle_packet(
 	read_buffer: &mut ReadBuffer,
 	write_buf_sender: Sender<WriteBuf>,
+	db: &mut Database,
 ) -> Result<(), ReadValueError> {
 	let packet = read_buffer.read_client_packet()?;
 	info!("Recieved packet {:?} from client", packet);
-	let mut db = Database::construct();
+
 	match packet {
 		ClientPacket::Connect => {
 			write_buf_sender
@@ -76,8 +77,9 @@ async fn handle_packet(
 }
 
 async fn handle_packets<'a>(read_buf_reciever: Receiver<(ReadBuffer, Sender<WriteBuf>)>) {
+	let mut db = Database::construct();
 	while let Ok(mut data) = read_buf_reciever.recv().await {
-		handle_packet(&mut data.0, data.1)
+		handle_packet(&mut data.0, data.1, &mut db)
 			.await
 			.unwrap_or_else(|e| error!("error reading data from client {}", e))
 	}
