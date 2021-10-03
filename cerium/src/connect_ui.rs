@@ -16,6 +16,12 @@ impl Plugin for ConnectUIPlugin {
 			.init_resource::<ConnectUIState>()
 			.net_listen::<{ ServerPacket::Connect as u16 }>()
 			.add_system(on_connect)
+			.net_listen::<{ ServerPacket::InvalidLogin as u16 }>()
+			.net_listen::<{ ServerPacket::InvalidSignup as u16 }>()
+			.add_system(on_auth_error)
+			.net_listen::<{ ServerPacket::SucessfulLogin as u16 }>()
+			.net_listen::<{ ServerPacket::SucessfulSignup as u16 }>()
+			.add_system(on_sucessful_auth)
 			.add_system(on_net_error);
 	}
 }
@@ -111,5 +117,39 @@ fn on_connect(
 fn on_net_error(mut events: EventReader<NetworkError>, mut state: ResMut<ConnectUIState>) {
 	for e in events.iter() {
 		state.status = Some(format!("Error {}", e));
+	}
+}
+
+fn on_auth_error(
+	mut invalid_login_event: EventReader<EventReadBuffer<{ ServerPacket::InvalidLogin as u16 }>>,
+	mut invalid_signup_event: EventReader<EventReadBuffer<{ ServerPacket::InvalidSignup as u16 }>>,
+	mut state: ResMut<ConnectUIState>,
+) {
+	for _ in invalid_login_event.iter() {
+		state.status = Some("Invalid Login :(".to_string());
+		info!("Invalid login");
+	}
+	for _ in invalid_signup_event.iter() {
+		state.status = Some("Invalid Signup :(".to_string());
+		info!("Invalid signup");
+	}
+}
+
+fn on_sucessful_auth(
+	mut sucessful_login_event: EventReader<
+		EventReadBuffer<{ ServerPacket::SucessfulLogin as u16 }>,
+	>,
+	mut sucessful_signup_event: EventReader<
+		EventReadBuffer<{ ServerPacket::SucessfulSignup as u16 }>,
+	>,
+	mut state: ResMut<ConnectUIState>,
+) {
+	for _ in sucessful_login_event.iter() {
+		state.status = Some("Logged in!".to_string());
+		info!("Logged In!");
+	}
+	for _ in sucessful_signup_event.iter() {
+		state.status = Some("Signed up!".to_string());
+		info!("Signed up!");
 	}
 }
