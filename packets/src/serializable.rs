@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 use crate::error::ReadValueError;
 use std::convert::TryInto;
@@ -91,5 +91,22 @@ impl Serializable for Vec3 {
 			f32::deserialize(buf)?,
 			f32::deserialize(buf)?,
 		))
+	}
+}
+
+impl Serializable for Quat {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&self.x.to_be_bytes());
+		buf.extend_from_slice(&self.y.to_be_bytes());
+		buf.extend_from_slice(&self.z.to_be_bytes());
+		buf.extend_from_slice(&self.w.to_be_bytes());
+	}
+	fn deserialize(buf: &mut ReadBuffer) -> Result<Self, ReadValueError> {
+		Ok(Quat::from_array([
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+		]))
 	}
 }

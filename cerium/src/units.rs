@@ -30,11 +30,17 @@ fn add_unit(
 			}),
 			..Default::default()
 		})
-		.insert(Unit {
-			start: japan,
-			end: germany,
-			time: 0.5,
-		});
+		.insert(Unit::new(japan, germany, 0));
+	commands
+		.spawn_bundle(PbrBundle {
+			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.2 })),
+			material: materials.add(StandardMaterial {
+				base_color: Color::hex("ffd891").unwrap(),
+				..Default::default()
+			}),
+			..Default::default()
+		})
+		.insert(Unit::new(japan, germany, 1));
 }
 
 fn update_units(
@@ -42,16 +48,13 @@ fn update_units(
 	heightmap_sampler: Option<Res<HeightmapSampler>>,
 	texture_handle: Option<Res<WorldTexture>>,
 	textures: Res<Assets<Texture>>,
-	time: Res<Time>,
 ) {
 	if let (Some(heightmap_sampler), Some(texture_handle)) = (heightmap_sampler, texture_handle) {
 		if let Some(height_map) = textures.get(&texture_handle.handle) {
-			for (mut unit, mut transform) in query.iter_mut() {
+			for (unit, mut transform) in query.iter_mut() {
 				transform.translation = heightmap_sampler
 					.sample(unit.get_position(), &height_map)
 					.into();
-				unit.time += time.delta_seconds() / 5.;
-				unit.time %= 1.;
 			}
 		}
 	}

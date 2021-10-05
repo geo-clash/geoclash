@@ -1,5 +1,7 @@
 use nanoserde::DeRon;
 
+use crate::Money;
+
 #[derive(DeRon, Debug)]
 pub enum BuildingEffects {
 	MultiplyGdp(f64),
@@ -10,6 +12,6 @@ pub enum BuildingEffects {
 pub struct BuildingData {
 	pub name: String,
 	pub description: String,
-	pub cost: i128,
+	pub cost: Money,
 	pub effects: Vec<BuildingEffects>,
 }
