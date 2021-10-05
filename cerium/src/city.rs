@@ -1,5 +1,5 @@
 use super::camera::MainCamera;
-use crate::world::HeightmapSampler;
+use crate::{screenspace::Projection, world::HeightmapSampler};
 use bevy::{math::Vec3A, prelude::*, render::camera::Camera};
 use game_statics::COUNTRIES;
 
@@ -60,32 +60,23 @@ pub fn add_cities(
 
 fn hover_city(
 	windows: Res<Windows>,
-	mut cursor_moved_events: EventReader<CursorMoved>,
 	mut city_query: Query<(&GlobalTransform, &City)>,
 	camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
-	for cursor in cursor_moved_events.iter() {
-		for (camera, camera_transform) in camera_query.iter() {
+	if let Some(cursor_position) = windows.get_primary().unwrap().cursor_position() {
+		for camera in camera_query.iter() {
 			let mut closest_index: Option<usize> = None;
 			let mut closest_distance: f32 = f32::MAX;
 
 			// Build a transform to convert from world to camera space
-			let window = (&windows).get(camera.window).unwrap();
-			let window_size = Vec2::new(window.width(), window.height());
-			let world_to_ndc: Mat4 =
-				camera.projection_matrix * camera_transform.compute_matrix().inverse();
+			let projection = Projection::new(&windows, camera);
 
 			// Iterate through cities
 			for (transform, city) in city_query.iter_mut() {
 				// Make sure the city is not on the other side of the world
-				if camera_transform.translation.dot(transform.translation) > 0. {
-					// Project world to camera space
-					let ndc_space_coords: Vec3 = world_to_ndc.project_point3(transform.translation);
-					// discard the z element and rescale x/y to fit the screen
-					let screen_space_coords =
-						(ndc_space_coords.truncate() + Vec2::ONE) / 2.0 * window_size;
+				if let Some(screen_space_coords) = projection.project_from_world(transform) {
 					// Calculate distance from city in screen space to the cursor
-					let distance = (screen_space_coords - cursor.position).length();
+					let distance = (screen_space_coords - cursor_position).length();
 					if distance < closest_distance {
 						closest_distance = distance;
 						closest_index = Some(city.id);

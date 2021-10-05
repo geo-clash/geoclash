@@ -48,13 +48,16 @@ fn update_units(
 	heightmap_sampler: Option<Res<HeightmapSampler>>,
 	texture_handle: Option<Res<WorldTexture>>,
 	textures: Res<Assets<Texture>>,
+	windows: Res<Windows>,
 ) {
 	if let (Some(heightmap_sampler), Some(texture_handle)) = (heightmap_sampler, texture_handle) {
 		if let Some(height_map) = textures.get(&texture_handle.handle) {
-			for (unit, mut transform) in query.iter_mut() {
-				transform.translation = heightmap_sampler
-					.sample(unit.get_position(), &height_map)
-					.into();
+			if let Some(_cursor_position) = windows.get_primary().unwrap().cursor_position() {
+				for (unit, mut transform) in query.iter_mut() {
+					transform.translation = heightmap_sampler
+						.sample(unit.get_position(), &height_map)
+						.into();
+				}
 			}
 		}
 	}
