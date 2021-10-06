@@ -18,7 +18,7 @@ impl Plugin for UnitPlugin {
 }
 
 struct Drag {
-	start: Vec2,
+	start: IVec2,
 }
 struct SelectionData {
 	drag: Option<Drag>,
@@ -26,7 +26,7 @@ struct SelectionData {
 impl SelectionData {
 	fn drag(
 		&mut self,
-		cursor_position: Vec2,
+		cursor_position: IVec2,
 		selection_rect_query: &mut Query<&mut Style, With<SelectionRect>>,
 		selection_widget_query: &mut Query<&mut Visible, With<SelectionWidget>>,
 	) {
@@ -40,15 +40,14 @@ impl SelectionData {
 		}
 		if let Some(Drag { start }) = self.drag {
 			for mut i in selection_rect_query.iter_mut() {
-				cursor_position.x.min(start.x);
 				i.size = Size::new(
-					Val::Px((cursor_position.x - start.x).abs()),
-					Val::Px((cursor_position.y - start.y).abs()),
+					Val::Px((cursor_position.x - start.x).abs() as f32),
+					Val::Px((cursor_position.y - start.y).abs() as f32),
 				);
 				i.position_type = PositionType::Absolute;
 				i.position = Rect {
-					left: Val::Px(cursor_position.x.min(start.x)),
-					bottom: Val::Px(cursor_position.y.min(start.y)),
+					left: Val::Px(cursor_position.x.min(start.x) as f32),
+					bottom: Val::Px(cursor_position.y.min(start.y) as f32),
 					..Default::default()
 				}
 			}
@@ -212,7 +211,7 @@ fn select_units(
 			None => return,
 		};
 		selection_data.drag(
-			cursor_position,
+			cursor_position.as_ivec2(),
 			&mut selection_rect_query,
 			&mut selection_widget_query,
 		);
