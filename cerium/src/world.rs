@@ -1,6 +1,6 @@
 use bevy::{math::Vec3A, prelude::*, render::pipeline::PrimitiveTopology};
 
-use crate::{city::add_cities, GameState};
+use crate::GameState;
 
 pub struct WorldTexture {
 	pub handle: Handle<Texture>,
@@ -198,8 +198,6 @@ fn load_world(
 				transform: Transform::from_xyz(0.0, 0.0, 0.0),
 				..Default::default()
 			});
-
-			add_cities(&mut commands, meshes, materials, &sampler, height_map);
 
 			state.set(GameState::Account).unwrap();
 			commands.insert_resource(sampler);

@@ -1,5 +1,9 @@
 use super::camera::MainCamera;
-use crate::{screenspace::Projection, world::HeightmapSampler};
+use crate::{
+	screenspace::Projection,
+	world::{HeightmapSampler, WorldTexture},
+	GameState,
+};
 use bevy::{math::Vec3A, prelude::*, render::camera::Camera};
 use game_statics::COUNTRIES;
 
@@ -7,7 +11,8 @@ pub struct CityPlugin;
 
 impl Plugin for CityPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_system(hover_city);
+		app.add_system(hover_city)
+			.add_system_set(SystemSet::on_exit(GameState::Loading).with_system(add_cities));
 	}
 }
 
@@ -17,11 +22,12 @@ struct City {
 }
 
 pub fn add_cities(
-	commands: &mut Commands,
+	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>,
-	height_map: &HeightmapSampler,
-	texture: &Texture,
+	height_map: Res<HeightmapSampler>,
+	texture: Res<WorldTexture>,
+	textures: Res<Assets<Texture>>,
 ) {
 	const RADIUS: f32 = 2.;
 	for (id, country) in COUNTRIES.iter().enumerate() {
@@ -44,7 +50,7 @@ pub fn add_cities(
 		)
 		.normalize();
 		println!("{} Pos: {}", country.name, position);
-		let height = height_map.height(&position, texture);
+		let height = height_map.height(&position, textures.get(&texture.handle).unwrap());
 		let position = position
 			* (height_map.radius + height as f32 / u8::MAX as f32 * height_map.height_radius);
 		commands
