@@ -23,6 +23,7 @@ struct Drag {
 struct SelectionData {
 	drag: Option<Drag>,
 }
+struct SelectedUnit;
 impl SelectionData {
 	fn drag(
 		&mut self,
@@ -56,8 +57,50 @@ impl SelectionData {
 	fn end_drag(
 		&mut self,
 		selection_widget_query: &mut Query<&mut Visible, With<SelectionWidget>>,
+		mut unit_query: Query<(Entity, &GlobalTransform, &Handle<StandardMaterial>), With<Unit>>,
+		mut commands: Commands,
+		windows: Res<Windows>,
+		camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+		mut materials: ResMut<Assets<StandardMaterial>>,
 	) {
-		if self.drag.is_some() {
+		const MAX_CLICK_DIST_TO_UNIT_SQRD: f32 = 2500.;
+		const MAX_CLICK_SQRD: f32 = 2500.;
+		if let Some(Drag { start }) = self.drag {
+			let projection = match camera_query.iter().next() {
+				Some(c) => Projection::new(&windows, c),
+				None => return,
+			};
+			let cursor_position = match windows.get_primary().unwrap().cursor_position() {
+				Some(x) => x,
+				None => return,
+			};
+			let start = start.as_vec2();
+			let is_click = MAX_CLICK_SQRD > start.distance_squared(cursor_position);
+			let min = cursor_position.min(start);
+			let max = cursor_position.max(start);
+
+			for (entity, transform, mat) in unit_query.iter_mut() {
+				if let Some(screen_space) = projection.project_from_world(&transform) {
+					if (is_click
+						&& screen_space.distance_squared(cursor_position)
+							< MAX_CLICK_DIST_TO_UNIT_SQRD)
+						|| (!is_click
+							&& screen_space.x > min.x && screen_space.x < max.x
+							&& screen_space.y > min.y && screen_space.y < max.y)
+					{
+						info!("Unit selected");
+						commands.entity(entity).insert(SelectedUnit);
+						if let Some(atlas) = materials.get_mut(mat) {
+							atlas.base_color = Color::CRIMSON;
+						}
+					} else {
+						commands.entity(entity).remove::<SelectedUnit>();
+						if let Some(atlas) = materials.get_mut(mat) {
+							atlas.base_color = Color::WHITE;
+						}
+					}
+				}
+			}
 			self.drag = None;
 			for mut i in selection_widget_query.iter_mut() {
 				i.is_visible = false;
@@ -173,38 +216,17 @@ fn update_units(
 }
 
 fn select_units(
-	mut unit_query: Query<(&GlobalTransform, &Handle<StandardMaterial>), With<Unit>>,
+	unit_query: Query<(Entity, &GlobalTransform, &Handle<StandardMaterial>), With<Unit>>,
+	commands: Commands,
 	mut selection_rect_query: Query<&mut Style, With<SelectionRect>>,
 	mut selection_widget_query: Query<&mut Visible, With<SelectionWidget>>,
 	mut selection_data: ResMut<SelectionData>,
 	windows: Res<Windows>,
 	camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 	mouse_input: Res<Input<MouseButton>>,
-	mut materials: ResMut<Assets<StandardMaterial>>,
+	materials: ResMut<Assets<StandardMaterial>>,
 ) {
-	if mouse_input.just_pressed(MouseButton::Left) {
-		let projection = match camera_query.iter().next() {
-			Some(c) => Projection::new(&windows, c),
-			None => return,
-		};
-		let cursor_position = match windows.get_primary().unwrap().cursor_position() {
-			Some(x) => x,
-			None => return,
-		};
-		for (transform, mat) in unit_query.iter_mut() {
-			info!("ITer");
-			if let Some(screen_space) = projection.project_from_world(&transform) {
-				info!("{:?}", screen_space);
-				if screen_space.distance_squared(cursor_position) < 2500. {
-					info!("Unit selected");
-					//let handle = mat.();
-					if let Some(atlas) = materials.get_mut(mat) {
-						atlas.base_color = Color::CRIMSON;
-					}
-				}
-			}
-		}
-	}
+	if mouse_input.just_pressed(MouseButton::Left) {}
 	if mouse_input.pressed(MouseButton::Left) {
 		let cursor_position = match windows.get_primary().unwrap().cursor_position() {
 			Some(x) => x,
@@ -216,6 +238,13 @@ fn select_units(
 			&mut selection_widget_query,
 		);
 	} else {
-		selection_data.end_drag(&mut selection_widget_query);
+		selection_data.end_drag(
+			&mut selection_widget_query,
+			unit_query,
+			commands,
+			windows,
+			camera_query,
+			materials,
+		);
 	}
 }
