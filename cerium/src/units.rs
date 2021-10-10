@@ -12,8 +12,12 @@ pub struct UnitPlugin;
 impl Plugin for UnitPlugin {
 	fn build(&self, app: &mut App) {
 		app.add_system_set(SystemSet::on_exit(GameState::Loading).with_system(add_unit))
-			.add_system_set(SystemSet::on_update(GameState::Account).with_system(update_units))
-			.add_system_set(SystemSet::on_update(GameState::Account).with_system(select_units));
+			.add_system_set(
+				SystemSet::on_update(GameState::Account)
+					.with_system(update_units)
+					.with_system(select_units)
+					.with_system(move_units),
+			);
 	}
 }
 
@@ -226,7 +230,6 @@ fn select_units(
 	mouse_input: Res<Input<MouseButton>>,
 	materials: ResMut<Assets<StandardMaterial>>,
 ) {
-	if mouse_input.just_pressed(MouseButton::Left) {}
 	if mouse_input.pressed(MouseButton::Left) {
 		let cursor_position = match windows.get_primary().unwrap().cursor_position() {
 			Some(x) => x,
@@ -246,5 +249,32 @@ fn select_units(
 			camera_query,
 			materials,
 		);
+	}
+}
+
+fn move_units(
+	mut unit_query: Query<&mut Unit, With<SelectedUnit>>,
+	mouse_input: Res<Input<MouseButton>>,
+	windows: Res<Windows>,
+	camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+) {
+	if mouse_input.just_pressed(MouseButton::Right) {
+		let projection = match camera_query.iter().next() {
+			Some(c) => Projection::new(&windows, c),
+			None => return,
+		};
+		let cursor_position = match windows.get_primary().unwrap().cursor_position() {
+			Some(x) => x,
+			None => return,
+		};
+		let ray = projection.project_from_screen(&cursor_position);
+		let point = match Projection::intersect(ray, Vec3::ZERO, 2.) {
+			Some(x) => x,
+			None => return,
+		};
+
+		for mut unit in unit_query.iter_mut() {
+			unit.set_destination(&point);
+		}
 	}
 }

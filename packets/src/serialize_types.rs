@@ -89,10 +89,22 @@ impl Unit {
 			class,
 		}
 	}
-	pub fn get_position(&self) -> Vec3 {
+	fn get_quat_position(&self) -> Quat {
 		let time = ((Self::time() - self.start_time) as f32) / self.duration as f32;
-		let time = time % 1.;
-		self.start.lerp(self.end, time).to_axis_angle().0
+		if time > 1. {
+			self.end
+		} else {
+			self.start.lerp(self.end, time)
+		}
+	}
+	pub fn get_position(&self) -> Vec3 {
+		self.get_quat_position().to_axis_angle().0
+	}
+	pub fn set_destination(&mut self, end: &Vec3) {
+		self.start = self.get_quat_position();
+		self.end = Quat::from_scaled_axis(*end);
+		self.start_time = Self::time();
+		self.duration = Self::duration(self.start, self.end, self.class);
 	}
 }
 
