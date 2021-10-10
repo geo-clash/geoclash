@@ -49,7 +49,6 @@ pub fn add_cities(
 			RADIUS * lat.cos() * lon.cos(),
 		)
 		.normalize();
-		println!("{} Pos: {}", country.name, position);
 		let height = height_map.height(&position, textures.get(&texture.handle).unwrap());
 		let position = position
 			* (height_map.radius + height as f32 / u8::MAX as f32 * height_map.height_radius);
