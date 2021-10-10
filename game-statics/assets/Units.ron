@@ -1,0 +1,32 @@
+// This contains information about units
+// This is a RON file (rusty object notation) available in the game-statics crate
+// This is parsed by game-statics/src/load_units.rs
+
+// Anyone is welcome to add suggestions and change balance
+
+[
+	(
+		name: "Cube",
+		description: "A simple cube is very quick but causes little damage",
+		class: Light,
+		cost: 100,
+		speed: 0.4,
+		range: 10.,
+		health: 100.,
+		health_recharge_sec: 2.,
+		dps_light: 10.,
+		dps_heavy: 6.,
+	),
+	(
+		name: "Cuboid",
+		description: "A cuboid is very slow but can shoot from very far",
+		class: Heavy,
+		cost: 400,
+		speed: 0.1,
+		range: 100.,
+		health: 100.,
+		health_recharge_sec: 2.,
+		dps_light: 10.,
+		dps_heavy: 6.,
+	),
+]

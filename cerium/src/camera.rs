@@ -38,21 +38,43 @@ fn camera_input(
 	_commands: Commands,
 	time: Res<Time>,
 	mouse_input: Res<Input<MouseButton>>,
-	mut cursor_moved_events: EventReader<CursorMoved>,
+	keys: Res<Input<KeyCode>>,
+	windows: Res<Windows>,
 	mut query: Query<&mut MovableCamera>,
 ) {
 	for mut camera in query.iter_mut() {
-		if mouse_input.pressed(MouseButton::Left) || mouse_input.pressed(MouseButton::Middle) {
+		if (mouse_input.pressed(MouseButton::Left)
+			&& (keys.pressed(KeyCode::RControl)
+				|| keys.pressed(KeyCode::LControl)
+				|| keys.pressed(KeyCode::RAlt)
+				|| keys.pressed(KeyCode::LAlt)))
+			|| mouse_input.pressed(MouseButton::Middle)
+		{
 			camera.velocity = Vec2::ZERO;
-			for cursor in cursor_moved_events.iter() {
-				if let Some(old_cursor_position) = camera.old_cursor_position {
-					camera.velocity +=
-						(cursor.position - old_cursor_position) / time.delta_seconds() / 200.;
-				}
-				camera.old_cursor_position = Some(cursor.position);
+			let cursor_position = windows.get_primary().unwrap().cursor_position().unwrap();
+			if let Some(old_cursor_position) = camera.old_cursor_position {
+				camera.velocity +=
+					(cursor_position - old_cursor_position) / time.delta_seconds() / 200.;
 			}
+			camera.old_cursor_position = Some(cursor_position);
 		} else {
 			camera.old_cursor_position = None;
+		}
+		let direction = Vec2::new(
+			(keys.pressed(KeyCode::Left) || keys.pressed(KeyCode::A)) as u8 as f32,
+			0.,
+		) - Vec2::new(
+			(keys.pressed(KeyCode::Right) || keys.pressed(KeyCode::D)) as u8 as f32,
+			0.,
+		) + Vec2::new(
+			0.,
+			(keys.pressed(KeyCode::Down) || keys.pressed(KeyCode::S)) as u8 as f32,
+		) - Vec2::new(
+			0.,
+			(keys.pressed(KeyCode::Up) || keys.pressed(KeyCode::W)) as u8 as f32,
+		);
+		if direction != Vec2::ZERO {
+			camera.velocity = direction * time.delta_seconds() * 100.;
 		}
 	}
 }

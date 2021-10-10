@@ -1,3 +1,5 @@
+use glam::{Quat, Vec3};
+
 use crate::error::ReadValueError;
 use std::convert::TryInto;
 
@@ -63,7 +65,7 @@ macro_rules! impl_num_serializable {
 	};
 }
 
-impl_num_serializable! { u8, u16, u32, u64, u128, i8, i16, i32, i64, i128 }
+impl_num_serializable! { u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64 }
 
 impl Serializable for String {
 	fn serialize(&self, buf: &mut Vec<u8>) {
@@ -74,5 +76,37 @@ impl Serializable for String {
 		let len = u16::from_be_bytes(buf.read_array("String len (u16)")?) as usize;
 		String::from_utf8(buf.read_vec(len, "String value")?)
 			.map_err(|_| ReadValueError::StringParseError)
+	}
+}
+
+impl Serializable for Vec3 {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&self.x.to_be_bytes());
+		buf.extend_from_slice(&self.y.to_be_bytes());
+		buf.extend_from_slice(&self.z.to_be_bytes());
+	}
+	fn deserialize(buf: &mut ReadBuffer) -> Result<Self, ReadValueError> {
+		Ok(Vec3::new(
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+		))
+	}
+}
+
+impl Serializable for Quat {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&self.x.to_be_bytes());
+		buf.extend_from_slice(&self.y.to_be_bytes());
+		buf.extend_from_slice(&self.z.to_be_bytes());
+		buf.extend_from_slice(&self.w.to_be_bytes());
+	}
+	fn deserialize(buf: &mut ReadBuffer) -> Result<Self, ReadValueError> {
+		Ok(Quat::from_array([
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+			f32::deserialize(buf)?,
+		]))
 	}
 }

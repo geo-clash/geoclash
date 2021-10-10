@@ -76,7 +76,7 @@ fn connect_ui(
 				.clicked()
 			{
 				if state.username.as_str() == "" || state.password.as_str() == "" {
-					println!("Some required fields are missing");
+					info!("Some required fields are missing");
 					state.status = Some("Some required fields are missing.".to_string());
 				} else {
 					state.status = Some("Connecting...".to_string());

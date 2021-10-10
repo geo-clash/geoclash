@@ -7,3 +7,5 @@ edition = "2018"
 
 [dependencies]
 thiserror = "1.0"
+glam = { version = "0.18" }
+game_statics = { path = "../game-statics" }

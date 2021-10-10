@@ -1,6 +1,6 @@
 use bevy::{math::Vec3A, prelude::*, render::pipeline::PrimitiveTopology};
 
-use crate::city::add_cities;
+use crate::GameState;
 
 pub struct WorldTexture {
 	pub handle: Handle<Texture>,
@@ -10,7 +10,8 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_startup_system(setup).add_system(load_world);
+		app.add_startup_system(setup)
+			.add_system_set(SystemSet::on_update(GameState::Loading).with_system(load_world));
 	}
 
 	fn name(&self) -> &str {
@@ -18,12 +19,11 @@ impl Plugin for WorldPlugin {
 	}
 }
 
-pub struct HeightmapSampler<'a> {
-	texture: &'a Texture,
+pub struct HeightmapSampler {
 	pub radius: f32,
 	pub height_radius: f32,
 }
-impl<'a> HeightmapSampler<'a> {
+impl HeightmapSampler {
 	fn sphere_uv(d: &Vec3A) -> Vec2 {
 		Vec2::new(
 			0.5 + f32::atan2(d.x, d.z) / (std::f32::consts::PI * 2.),
@@ -31,20 +31,24 @@ impl<'a> HeightmapSampler<'a> {
 		)
 	}
 
-	pub fn height(&self, d: &Vec3A) -> u8 {
+	pub fn height(&self, d: &Vec3A, texture: &Texture) -> u8 {
 		let sphere_uv = Self::sphere_uv(d);
 
 		if sphere_uv.x > 1. && sphere_uv.y > 1. {
 			error!("More than one {:?}", sphere_uv);
 		}
-		let dims = self.texture.size;
+		let dims = texture.size;
 		let pixel_coord =
-			(Vec2::new((dims.width - 1) as f32, (dims.height - 1) as f32) * sphere_uv).as_u32();
+			(Vec2::new((dims.width - 1) as f32, (dims.height - 1) as f32) * sphere_uv).as_uvec2();
 
 		let pixel_index = ((dims.width) * (pixel_coord.y) + (pixel_coord.x)) as usize * 4;
-		self.texture.data[pixel_index]
+		texture.data[pixel_index]
 	}
-	fn get_mesh(&self, order: usize) -> [Mesh; 2] {
+	pub fn sample(&self, d: impl Into<Vec3A>, texture: &Texture) -> Vec3A {
+		let d = d.into();
+		d * ((self.height(&d, texture) as f32 / u8::MAX as f32) * self.height_radius + self.radius)
+	}
+	fn get_mesh(&self, order: usize, texture: &Texture) -> [Mesh; 2] {
 		let triangles = [
 			0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4,
 		];
@@ -118,7 +122,7 @@ impl<'a> HeightmapSampler<'a> {
 				.iter()
 				.map(|pos| {
 					let normalized = pos.normalize();
-					let height = self.height(&normalized);
+					let height = self.height(&normalized, texture);
 					max_tri_height = max_tri_height.max(height);
 					(normalized
 						* ((height as f32 / u8::MAX as f32) * self.height_radius + self.radius))
@@ -164,16 +168,16 @@ fn load_world(
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>,
+	mut state: ResMut<State<GameState>>,
 ) {
 	if let Some(world_texture) = world_texture {
 		if let Some(height_map) = textures.get(&world_texture.handle) {
 			info!("Dims {:?}, len {}", height_map.size, height_map.data.len());
 			let sampler = HeightmapSampler {
-				texture: height_map,
 				radius: 2.,
 				height_radius: 0.3,
 			};
-			let [land, ocean] = sampler.get_mesh(70);
+			let [land, ocean] = sampler.get_mesh(70, height_map);
 			commands.spawn_bundle(PbrBundle {
 				mesh: meshes.add(land),
 				material: materials.add(StandardMaterial {
@@ -195,9 +199,8 @@ fn load_world(
 				..Default::default()
 			});
 
-			add_cities(&mut commands, meshes, materials, &sampler);
-
-			commands.remove_resource::<WorldTexture>();
+			state.set(GameState::Account).unwrap();
+			commands.insert_resource(sampler);
 		}
 	}
 }
