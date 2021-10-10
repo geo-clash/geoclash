@@ -11,7 +11,12 @@ pub struct UnitPlugin;
 
 impl Plugin for UnitPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_system_set(SystemSet::on_exit(GameState::Loading).with_system(add_unit))
+		app.add_startup_system(insert_materials)
+			.add_system_set(
+				SystemSet::on_exit(GameState::Loading)
+					.with_system(add_unit)
+					.with_system(add_box_selection),
+			)
 			.add_system_set(
 				SystemSet::on_update(GameState::Account)
 					.with_system(update_units)
@@ -19,6 +24,23 @@ impl Plugin for UnitPlugin {
 					.with_system(move_units),
 			);
 	}
+}
+
+struct UnitMaterials {
+	selected: Handle<StandardMaterial>,
+	standard: Handle<StandardMaterial>,
+}
+fn insert_materials(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
+	commands.insert_resource(UnitMaterials {
+		selected: materials.add(StandardMaterial {
+			base_color: Color::CRIMSON,
+			..Default::default()
+		}),
+		standard: materials.add(StandardMaterial {
+			base_color: Color::hex("ffd891").unwrap(),
+			..Default::default()
+		}),
+	})
 }
 
 struct Drag {
@@ -61,11 +83,14 @@ impl SelectionData {
 	fn end_drag(
 		&mut self,
 		selection_widget_query: &mut Query<&mut Visible, With<SelectionWidget>>,
-		mut unit_query: Query<(Entity, &GlobalTransform, &Handle<StandardMaterial>), With<Unit>>,
+		mut unit_query: Query<
+			(Entity, &GlobalTransform, &mut Handle<StandardMaterial>),
+			With<Unit>,
+		>,
 		mut commands: Commands,
 		windows: Res<Windows>,
 		camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-		mut materials: ResMut<Assets<StandardMaterial>>,
+		unit_materials: Res<UnitMaterials>,
 	) {
 		const MAX_CLICK_DIST_TO_UNIT_SQRD: f32 = 2500.;
 		const MAX_CLICK_SQRD: f32 = 2500.;
@@ -83,7 +108,7 @@ impl SelectionData {
 			let min = cursor_position.min(start);
 			let max = cursor_position.max(start);
 
-			for (entity, transform, mat) in unit_query.iter_mut() {
+			for (entity, transform, mut mat) in unit_query.iter_mut() {
 				if let Some(screen_space) = projection.project_from_world(&transform) {
 					if (is_click
 						&& screen_space.distance_squared(cursor_position)
@@ -94,14 +119,10 @@ impl SelectionData {
 					{
 						info!("Unit selected");
 						commands.entity(entity).insert(SelectedUnit);
-						if let Some(atlas) = materials.get_mut(mat) {
-							atlas.base_color = Color::CRIMSON;
-						}
+						*mat = unit_materials.selected.clone();
 					} else {
 						commands.entity(entity).remove::<SelectedUnit>();
-						if let Some(atlas) = materials.get_mut(mat) {
-							atlas.base_color = Color::WHITE;
-						}
+						*mat = unit_materials.standard.clone();
 					}
 				}
 			}
@@ -115,34 +136,7 @@ impl SelectionData {
 struct SelectionWidget;
 struct SelectionRect;
 
-fn add_unit(
-	mut commands: Commands,
-	mut meshes: ResMut<Assets<Mesh>>,
-	mut materials: ResMut<Assets<StandardMaterial>>,
-	mut colour_materials: ResMut<Assets<ColorMaterial>>,
-) {
-	let japan = Vec3::new(0.52484196, 0.5836691, -0.6195735);
-	let germany = Vec3::new(0.14106606, 0.79356587, 0.59190667);
-	commands
-		.spawn_bundle(PbrBundle {
-			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
-			material: materials.add(StandardMaterial {
-				base_color: Color::hex("ffd891").unwrap(),
-				..Default::default()
-			}),
-			..Default::default()
-		})
-		.insert(Unit::new(japan, germany, 0));
-	commands
-		.spawn_bundle(PbrBundle {
-			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.2 })),
-			material: materials.add(StandardMaterial {
-				base_color: Color::hex("ffd891").unwrap(),
-				..Default::default()
-			}),
-			..Default::default()
-		})
-		.insert(Unit::new(japan, germany, 1));
+fn add_box_selection(mut commands: Commands, mut colour_materials: ResMut<Assets<ColorMaterial>>) {
 	commands
 		.spawn_bundle(NodeBundle {
 			style: Style {
@@ -202,6 +196,29 @@ fn add_unit(
 	commands.insert_resource(SelectionData { drag: None });
 }
 
+fn add_unit(
+	mut commands: Commands,
+	mut meshes: ResMut<Assets<Mesh>>,
+	unit_materials: Res<UnitMaterials>,
+) {
+	let japan = Vec3::new(0.52484196, 0.5836691, -0.6195735);
+	let germany = Vec3::new(0.14106606, 0.79356587, 0.59190667);
+	commands
+		.spawn_bundle(PbrBundle {
+			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
+			material: unit_materials.standard.clone(),
+			..Default::default()
+		})
+		.insert(Unit::new(japan, germany, 0));
+	commands
+		.spawn_bundle(PbrBundle {
+			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.2 })),
+			material: unit_materials.standard.clone(),
+			..Default::default()
+		})
+		.insert(Unit::new(japan, germany, 1));
+}
+
 fn update_units(
 	mut query: Query<(&mut Unit, &mut GlobalTransform)>,
 	heightmap_sampler: Option<Res<HeightmapSampler>>,
@@ -220,7 +237,7 @@ fn update_units(
 }
 
 fn select_units(
-	unit_query: Query<(Entity, &GlobalTransform, &Handle<StandardMaterial>), With<Unit>>,
+	unit_query: Query<(Entity, &GlobalTransform, &mut Handle<StandardMaterial>), With<Unit>>,
 	commands: Commands,
 	mut selection_rect_query: Query<&mut Style, With<SelectionRect>>,
 	mut selection_widget_query: Query<&mut Visible, With<SelectionWidget>>,
@@ -228,7 +245,7 @@ fn select_units(
 	windows: Res<Windows>,
 	camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 	mouse_input: Res<Input<MouseButton>>,
-	materials: ResMut<Assets<StandardMaterial>>,
+	unit_materials: Res<UnitMaterials>,
 ) {
 	if mouse_input.pressed(MouseButton::Left) {
 		let cursor_position = match windows.get_primary().unwrap().cursor_position() {
@@ -247,7 +264,7 @@ fn select_units(
 			commands,
 			windows,
 			camera_query,
-			materials,
+			unit_materials,
 		);
 	}
 }
