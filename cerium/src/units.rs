@@ -26,6 +26,9 @@ impl Plugin for UnitPlugin {
 	}
 }
 
+#[derive(Component)]
+struct UnitComponent(Unit);
+
 struct UnitMaterials {
 	selected: Handle<StandardMaterial>,
 	standard: Handle<StandardMaterial>,
@@ -49,6 +52,7 @@ struct Drag {
 struct SelectionData {
 	drag: Option<Drag>,
 }
+#[derive(Component)]
 struct SelectedUnit;
 impl SelectionData {
 	fn drag(
@@ -85,7 +89,7 @@ impl SelectionData {
 		selection_widget_query: &mut Query<&mut Visible, With<SelectionWidget>>,
 		mut unit_query: Query<
 			(Entity, &GlobalTransform, &mut Handle<StandardMaterial>),
-			With<Unit>,
+			With<UnitComponent>,
 		>,
 		mut commands: Commands,
 		windows: Res<Windows>,
@@ -133,7 +137,9 @@ impl SelectionData {
 		}
 	}
 }
+#[derive(Component)]
 struct SelectionWidget;
+#[derive(Component)]
 struct SelectionRect;
 
 fn add_box_selection(mut commands: Commands, mut colour_materials: ResMut<Assets<ColorMaterial>>) {
@@ -209,18 +215,18 @@ fn add_unit(
 			material: unit_materials.standard.clone(),
 			..Default::default()
 		})
-		.insert(Unit::new(japan, germany, 0));
+		.insert(UnitComponent(Unit::new(japan, germany, 0)));
 	commands
 		.spawn_bundle(PbrBundle {
 			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.2 })),
 			material: unit_materials.standard.clone(),
 			..Default::default()
 		})
-		.insert(Unit::new(japan, germany, 1));
+		.insert(UnitComponent(Unit::new(japan, germany, 1)));
 }
 
 fn update_units(
-	mut query: Query<(&mut Unit, &mut GlobalTransform)>,
+	mut query: Query<(&mut UnitComponent, &mut GlobalTransform)>,
 	heightmap_sampler: Option<Res<HeightmapSampler>>,
 	texture_handle: Option<Res<WorldTexture>>,
 	textures: Res<Assets<Texture>>,
@@ -229,7 +235,7 @@ fn update_units(
 		if let Some(height_map) = textures.get(&texture_handle.handle) {
 			for (unit, mut transform) in query.iter_mut() {
 				transform.translation = heightmap_sampler
-					.sample(unit.get_position(), &height_map)
+					.sample(unit.0.get_position(), &height_map)
 					.into();
 			}
 		}
@@ -237,7 +243,10 @@ fn update_units(
 }
 
 fn select_units(
-	unit_query: Query<(Entity, &GlobalTransform, &mut Handle<StandardMaterial>), With<Unit>>,
+	unit_query: Query<
+		(Entity, &GlobalTransform, &mut Handle<StandardMaterial>),
+		With<UnitComponent>,
+	>,
 	commands: Commands,
 	mut selection_rect_query: Query<&mut Style, With<SelectionRect>>,
 	mut selection_widget_query: Query<&mut Visible, With<SelectionWidget>>,
@@ -270,7 +279,7 @@ fn select_units(
 }
 
 fn move_units(
-	mut unit_query: Query<&mut Unit, With<SelectedUnit>>,
+	mut unit_query: Query<&mut UnitComponent, With<SelectedUnit>>,
 	mouse_input: Res<Input<MouseButton>>,
 	windows: Res<Windows>,
 	camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
@@ -291,7 +300,7 @@ fn move_units(
 		};
 
 		for mut unit in unit_query.iter_mut() {
-			unit.set_destination(&point);
+			unit.0.set_destination(&point);
 		}
 	}
 }

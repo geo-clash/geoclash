@@ -23,7 +23,7 @@ fn setup(mut commands: Commands) {
 		})
 		.insert(MainCamera);
 }
-
+#[derive(Component)]
 struct MovableCamera {
 	pub old_cursor_position: Option<Vec2>,
 	pub velocity: Vec2,
@@ -32,6 +32,7 @@ struct MovableCamera {
 	friction: f32,
 }
 
+#[derive(Component)]
 pub struct MainCamera;
 
 fn camera_input(

@@ -91,6 +91,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 		.insert(FpsText);
 }
 
+#[derive(Component)]
 struct FpsText;
 fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, With<FpsText>>) {
 	for mut text in query.iter_mut() {

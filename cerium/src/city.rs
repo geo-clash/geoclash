@@ -16,7 +16,7 @@ impl Plugin for CityPlugin {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Component)]
 struct City {
 	pub id: usize,
 }
