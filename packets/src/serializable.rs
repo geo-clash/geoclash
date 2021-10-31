@@ -1,8 +1,13 @@
+//! [`Serializable`] and [`ReadBuffer`] types as well as some [`Serializable`] implmentations for glam types, ints, strings, and vecs.
+
 use glam::{Quat, Vec3};
 
 use crate::error::ReadValueError;
 use std::convert::TryInto;
 
+/// Contains a stream of bytes and a read location.
+///
+/// `assert_eq!(u8::deserialize(&mut ReadBuffer::new(vec![6])).unwrap(),6_u8);`
 pub struct ReadBuffer {
 	buffer: Vec<u8>,
 	position: usize,
@@ -42,6 +47,19 @@ impl<'a> ReadBuffer {
 	}
 }
 
+/// Trait for serializing and deserializing items in custom format
+///
+/// ```
+/// let server_info = ServerInfo {
+/// 	name: "test".to_string(),
+/// 	description: "test descrip".to_string(),
+/// 	host: "test_host".to_string(),
+/// };
+/// let f = WriteBuf::new_server_packet(ServerPacket::Connect).push(server_info.clone());
+/// let mut reader = ReadBuffer::new(f.0);
+/// assert_eq!(reader.read_server_packet().unwrap(), ServerPacket::Connect);
+/// assert_eq!(ServerInfo::deserialize(&mut reader).unwrap(), server_info);
+/// ```
 pub trait Serializable {
 	fn serialize(&self, buf: &mut Vec<u8>);
 	fn deserialize(buf: &mut ReadBuffer) -> Result<Self, ReadValueError>
@@ -49,6 +67,7 @@ pub trait Serializable {
 		Self: Sized;
 }
 
+/// Implements serializable on numbers with `to_be_bytes()` and `from_be_bytes()` functions
 macro_rules! impl_num_serializable {
 	($($struct_name:ident),*) => {
 		// block to be repeated
@@ -108,5 +127,25 @@ impl Serializable for Quat {
 			f32::deserialize(buf)?,
 			f32::deserialize(buf)?,
 		]))
+	}
+}
+
+impl<T: Serializable> Serializable for Vec<T> {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&(self.len() as u32).to_be_bytes());
+		for i in self {
+			i.serialize(buf);
+		}
+	}
+	fn deserialize(buf: &mut ReadBuffer) -> Result<Self, ReadValueError> {
+		let len = u32::deserialize(buf)? as usize;
+
+		let mut array: Vec<T> = Vec::new();
+		array.reserve(len);
+		for _ in 0..len {
+			array.push(T::deserialize(buf)?);
+		}
+
+		Ok(array)
 	}
 }

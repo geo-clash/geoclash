@@ -6,12 +6,15 @@ use net::{
 
 use async_channel::Sender;
 
+/// Runs the server, sending back read buffers and write buffer senders for each new client message
 pub async fn server(
 	addr: &'static str,
-	read_buf_sender: Sender<(ReadBuffer, Sender<WriteBuf>)>,
+	read_buf_sender: Sender<((ReadBuffer, usize), Sender<WriteBuf>)>,
 ) -> Result<(), Box<std::io::Error>> {
 	let listener = TcpListener::bind(addr).await?;
 	info!("Started server on {}...", addr);
+
+	let mut client_id = 0;
 
 	loop {
 		let (socket, other_addr) = listener.accept().await?;
@@ -26,7 +29,10 @@ pub async fn server(
 			info!("Client connected from {}", other_addr);
 
 			if let Err(_) = buf_sender
-				.send((ReadBuffer::new(vec![0, 0]), write_buf_sender.clone()))
+				.send((
+					(ReadBuffer::new(vec![0, 0]), client_id),
+					write_buf_sender.clone(),
+				))
 				.await
 			{
 				info!("receiver dropped");
@@ -35,13 +41,13 @@ pub async fn server(
 
 			let mut buffer = vec![0; 10000];
 
-			loop {
+			'read: loop {
 				match RemoteConnection::read_length(&mut buffer, &mut socket_read).await {
 					ReadResponse::Ok(len) => {
 						info!("Recieved message: {:?}", &buffer[0..len]);
 						if let Err(_) = buf_sender
 							.send((
-								ReadBuffer::new(buffer[0..len].to_vec()),
+								(ReadBuffer::new(buffer[0..len].to_vec()), client_id),
 								write_buf_sender.clone(),
 							))
 							.await
@@ -50,8 +56,8 @@ pub async fn server(
 							return;
 						}
 					}
-					ReadResponse::Disconnected => break,
-					ReadResponse::Error => return,
+					ReadResponse::Disconnected => break 'read,
+					ReadResponse::Error => break 'read,
 					ReadResponse::PacketLengthTooLong => {
 						error!("Packet length more than buffer length");
 						write_buf_sender.clone().send(WriteBuf::new_server_packet(
@@ -60,6 +66,17 @@ pub async fn server(
 					}
 				}
 			}
+
+			if let Err(_) = buf_sender
+				.send((
+					(ReadBuffer::new(vec![0, 1]), client_id),
+					write_buf_sender.clone(),
+				))
+				.await
+			{
+				info!("receiver dropped");
+				return;
+			}
 		});
 
 		tokio::spawn(async move {
@@ -67,5 +84,7 @@ pub async fn server(
 				RemoteConnection::socket_write(&mut x, &mut socket_write).await;
 			}
 		});
+
+		client_id += 1;
 	}
 }

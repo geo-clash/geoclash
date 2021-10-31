@@ -1,3 +1,5 @@
+//! Contains the [`PlayerData`] type used in the database.
+
 use net::packets::*;
 
 // Argon username: (), password: ()  username: (), password: ()  username: (), password: () 2 with default params (Argon2id v19)
@@ -5,6 +7,9 @@ lazy_static! {
 	static ref ARGON: argon2::Argon2<'static> = argon2::Argon2::default();
 }
 
+/// Data stored for each player
+///
+/// Username, argon hashed password and countries.
 #[derive(Debug)]
 pub struct PlayerData {
 	pub username: String,
@@ -12,6 +17,7 @@ pub struct PlayerData {
 	pub countries: Vec<CountryId>,
 }
 impl PlayerData {
+	/// Creates a new player from the provided authentication.
 	pub fn new(auth: Authentication) -> Self {
 		Self {
 			username: auth.username,
@@ -28,7 +34,7 @@ impl PlayerData {
 			countries: Vec::new(),
 		}
 	}
-	// TODO: elaborate to force users to have numbers / capitals / etc
+	/// Checks if password is secure
 	pub fn pass_secure(authentication: &Authentication) -> bool {
 		if authentication.password.len() > 5 {
 			for i in 0..10 {

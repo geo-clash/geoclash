@@ -2,6 +2,8 @@
 extern crate lazy_static;
 
 pub type Money = i64;
+pub type UnitClassId = u8;
+pub type UnitId = u32;
 
 mod country_data;
 pub use country_data::*;

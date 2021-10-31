@@ -1,12 +1,15 @@
 use bevy::prelude::*;
 
+use crate::GameState;
+
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
 	fn build(&self, app: &mut App) {
 		app.add_startup_system(setup)
-			.add_system(camera_input)
-			.add_system(camera_movement);
+			.add_system(camera_movement)
+			.add_system_set(SystemSet::on_enter(GameState::Playing).with_system(setup_interactable))
+			.add_system_set(SystemSet::on_update(GameState::Playing).with_system(camera_input));
 	}
 }
 
@@ -16,10 +19,10 @@ fn setup(mut commands: Commands) {
 		.spawn_bundle(PerspectiveCameraBundle::default())
 		.insert(MovableCamera {
 			old_cursor_position: None,
-			velocity: Vec2::ZERO,
+			velocity: Vec2::new(1., 0.2),
 			rotation: Quat::IDENTITY,
 			distance: 8.,
-			friction: 0.9,
+			friction: 1.,
 		})
 		.insert(MainCamera);
 }
@@ -34,6 +37,12 @@ struct MovableCamera {
 
 #[derive(Component)]
 pub struct MainCamera;
+
+fn setup_interactable(mut query: Query<&mut MovableCamera>) {
+	for mut camera in query.iter_mut() {
+		camera.friction = 0.9;
+	}
+}
 
 fn camera_input(
 	_commands: Commands,

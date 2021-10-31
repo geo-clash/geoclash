@@ -13,3 +13,5 @@ lazy_static = "1.4"
 simple_logger = "1.13"
 log = "0.4"
 async-channel = "1.6"
+glam = { version = "0.18" }
+game_statics = { path = "../game-statics" }

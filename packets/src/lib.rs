@@ -1,3 +1,14 @@
+//! This crate provides a custom binary serializer through the trait [`Serializable`].
+//!
+//! [`Serializable`] implements this for some base types -[`u8`] [`i128`] [`f64`]
+//! glam's [`glam::Vec3`] & [`glam::Quat`], [`String`] and a [`Vec`] of [`Serializable`] elements.
+//!
+//! [`serialize_types`] provides some game specific structs such as [`SetDestination`]
+//!
+//! [`packet_enum`] provides a macro to do an int to enum conversion
+//!
+//! [`error`] has parsing errors.
+
 pub type CountryId = u16;
 pub type UserId = u32;
 
@@ -15,21 +26,33 @@ mod packet_enum;
 
 packet_enum! { ClientPacket;
 	Connect,
+	Disconnect,
 	Login,
 	SignUp,
+	MoveUnit,
 	RequestCountryInfo
 }
 
 packet_enum! { ServerPacket;
 	Connect,
+	Disconnect,
 	PacketLengthInvalid,
 	ServerInfo,
-	InvalidLogin,
-	InvalidSignup,
-	SucessfulLogin,
-	SucessfulSignup,
-	CountryInfo
+	InvalidAuth,
+	SuccessfulAuth,
+	AlreadyAuthenticated,
+	NotAuthenticated,
+	InitialUnits,
+	UnitNotControllable,
+	SetDestination,
+	NewUnit
 }
+
+/// The write buffer countains a vector of bytes. These are started with a [`ServerPacket`] or [`ClientPacket`].
+///
+/// ```
+/// WriteBuf::new_server_packet(ServerPacket::ServerInfo).push(6_u8)
+/// ```
 
 #[derive(Clone, Debug, Default)]
 pub struct WriteBuf(Vec<u8>);
@@ -71,7 +94,7 @@ mod tests {
 	fn serialize_enum() {
 		assert_eq!(
 			WriteBuf::new_server_packet(ServerPacket::ServerInfo).inner(),
-			&[0, 2]
+			&[0, 3]
 		);
 	}
 	#[test]
@@ -80,7 +103,7 @@ mod tests {
 			WriteBuf::new_server_packet(ServerPacket::ServerInfo)
 				.push(6_u8)
 				.inner(),
-			&[0, 2, 6]
+			&[0, 3, 6]
 		);
 	}
 	#[test]
@@ -90,7 +113,7 @@ mod tests {
 				.push(-90_i128)
 				.inner(),
 			&[
-				0, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				0, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 				166
 			]
 		);
@@ -102,15 +125,15 @@ mod tests {
 			WriteBuf::new_server_packet(ServerPacket::ServerInfo)
 				.push(String::from("hello"))
 				.inner(),
-			&[0, 2, 0, 5, 104, 101, 108, 108, 111]
+			&[0, 3, 0, 5, 104, 101, 108, 108, 111]
 		);
 	}
 
 	#[test]
 	fn deserialize_enum() {
 		assert_eq!(
-			ReadBuffer::new(vec![0, 3]).read_server_packet().unwrap(),
-			ServerPacket::InvalidLogin
+			ReadBuffer::new(vec![0, 4]).read_server_packet().unwrap(),
+			ServerPacket::InvalidAuth
 		);
 	}
 	#[test]
@@ -146,14 +169,11 @@ mod tests {
 			description: "test descrip".to_string(),
 			host: "test_host".to_string(),
 		};
-		let f = WriteBuf::new_server_packet(ServerPacket::CountryInfo).push(server_info.clone());
+		let f = WriteBuf::new_server_packet(ServerPacket::Connect).push(server_info.clone());
 
 		let mut reader = ReadBuffer::new(f.0);
 
-		assert_eq!(
-			reader.read_server_packet().unwrap(),
-			ServerPacket::CountryInfo
-		);
+		assert_eq!(reader.read_server_packet().unwrap(), ServerPacket::Connect);
 
 		assert_eq!(ServerInfo::deserialize(&mut reader).unwrap(), server_info);
 	}

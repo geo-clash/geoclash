@@ -1,8 +1,14 @@
-use bevy::{prelude::*, render::camera::Camera};
-use client_net::Unit;
+use bevy::{prelude::*, render::camera::Camera, utils::HashMap};
+use client_net::{
+	AppNetworkClientMessage, ClientPacket, EventReadBuffer, InitialState, InitialUnit, MoveUnit,
+	Serializable, ServerPacket, SetDestination, WriteBuf,
+};
+use client_unit::Unit;
+use game_statics::UnitId;
 
 use crate::{
 	camera::MainCamera,
+	client_unit,
 	screenspace::Projection,
 	world::{HeightmapSampler, WorldTexture},
 	GameState,
@@ -12,16 +18,19 @@ pub struct UnitPlugin;
 impl Plugin for UnitPlugin {
 	fn build(&self, app: &mut App) {
 		app.add_startup_system(insert_materials)
+			.add_startup_system(insert_meshes)
+			.net_listen::<{ ServerPacket::InitialUnits as u16 }>()
+			.net_listen::<{ ServerPacket::NewUnit as u16 }>()
+			.net_listen::<{ ServerPacket::SetDestination as u16 }>()
+			.add_system(on_initial_units)
+			.add_system_set(SystemSet::on_enter(GameState::Playing).with_system(add_box_selection))
 			.add_system_set(
-				SystemSet::on_exit(GameState::Loading)
-					.with_system(add_unit)
-					.with_system(add_box_selection),
-			)
-			.add_system_set(
-				SystemSet::on_update(GameState::Account)
+				SystemSet::on_update(GameState::Playing)
 					.with_system(update_units)
 					.with_system(select_units)
-					.with_system(move_units),
+					.with_system(move_units)
+					.with_system(update_destinations)
+					.with_system(on_new_unit),
 			);
 	}
 }
@@ -44,6 +53,14 @@ fn insert_materials(mut commands: Commands, mut materials: ResMut<Assets<Standar
 			..Default::default()
 		}),
 	})
+}
+
+struct UnitMeshes(Vec<Handle<Mesh>>);
+fn insert_meshes(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+	commands.insert_resource(UnitMeshes(vec![
+		meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
+		meshes.add(Mesh::from(shape::Cube { size: 0.2 })),
+	]));
 }
 
 struct Drag {
@@ -202,28 +219,30 @@ fn add_box_selection(mut commands: Commands, mut colour_materials: ResMut<Assets
 	commands.insert_resource(SelectionData { drag: None });
 }
 
-fn add_unit(
-	mut commands: Commands,
-	mut meshes: ResMut<Assets<Mesh>>,
-	unit_materials: Res<UnitMaterials>,
-) {
-	let japan = Vec3::new(0.52484196, 0.5836691, -0.6195735);
-	let germany = Vec3::new(0.14106606, 0.79356587, 0.59190667);
-	commands
-		.spawn_bundle(PbrBundle {
-			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
-			material: unit_materials.standard.clone(),
-			..Default::default()
-		})
-		.insert(UnitComponent(Unit::new(japan, germany, 0)));
-	commands
-		.spawn_bundle(PbrBundle {
-			mesh: meshes.add(Mesh::from(shape::Cube { size: 0.2 })),
-			material: unit_materials.standard.clone(),
-			..Default::default()
-		})
-		.insert(UnitComponent(Unit::new(japan, germany, 1)));
-}
+// fn add_unit(
+// 	mut commands: Commands,
+// 	mut meshes: ResMut<Assets<Mesh>>,
+// 	unit_materials: Res<UnitMaterials>,
+// ) {
+// 	let japan = Vec3::new(0.52484196, 0.5836691, -0.6195735);
+// 	let germany = Vec3::new(0.14106606, 0.79356587, 0.59190667);
+// 	let unit_class = 0;
+// 	commands
+// 		.spawn_bundle(PbrBundle {
+// 			mesh: unit_meshes.0[unit_class as usize].clone(),
+// 			material: unit_materials.standard.clone(),
+// 			..Default::default()
+// 		})
+// 		.insert(UnitComponent(Unit::new(japan, germany, unit_class)));
+// 	let unit_class = 1;
+// 	commands
+// 		.spawn_bundle(PbrBundle {
+// 			mesh: unit_meshes.0[unit_class as usize].clone(),
+// 			material: unit_materials.standard.clone(),
+// 			..Default::default()
+// 		})
+// 		.insert(UnitComponent(Unit::new(japan, germany, unit_class)));
+// }
 
 fn update_units(
 	mut query: Query<(&mut UnitComponent, &mut GlobalTransform)>,
@@ -279,10 +298,11 @@ fn select_units(
 }
 
 fn move_units(
-	mut unit_query: Query<&mut UnitComponent, With<SelectedUnit>>,
+	unit_query: Query<&UnitComponent, With<SelectedUnit>>,
 	mouse_input: Res<Input<MouseButton>>,
 	windows: Res<Windows>,
 	camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+	mut writer: EventWriter<WriteBuf>,
 ) {
 	if mouse_input.just_pressed(MouseButton::Right) {
 		let projection = match camera_query.iter().next() {
@@ -299,8 +319,82 @@ fn move_units(
 			None => return,
 		};
 
-		for mut unit in unit_query.iter_mut() {
-			unit.0.set_destination(&point);
+		for unit in unit_query.iter() {
+			writer.send(
+				WriteBuf::new_client_packet(ClientPacket::MoveUnit).push(MoveUnit {
+					unit: unit.0.id,
+					destination: Quat::from_scaled_axis(point),
+				}),
+			)
 		}
+	}
+}
+type UnitIdToEntity = HashMap<UnitId, Entity>;
+fn on_initial_units(
+	mut initial_unit_events: EventReader<EventReadBuffer<{ ServerPacket::InitialUnits as u16 }>>,
+	mut commands: Commands,
+	unit_materials: Res<UnitMaterials>,
+	unit_meshes: Res<UnitMeshes>,
+) {
+	for reader in initial_unit_events.iter() {
+		let initial_state = InitialState::deserialize(&mut reader.read()).unwrap();
+
+		let x: UnitIdToEntity = initial_state
+			.units
+			.iter()
+			.map(|i| {
+				(
+					i.id,
+					commands
+						.spawn_bundle(PbrBundle {
+							mesh: unit_meshes.0[i.class as usize].clone(),
+							material: unit_materials.standard.clone(),
+							..Default::default()
+						})
+						.insert(UnitComponent(Unit::from_initial_unit(&i)))
+						.id(),
+				)
+			})
+			.collect();
+		commands.insert_resource(x);
+	}
+}
+
+fn on_new_unit(
+	mut new_unit_events: EventReader<EventReadBuffer<{ ServerPacket::NewUnit as u16 }>>,
+	mut unitid_to_entity: ResMut<UnitIdToEntity>,
+	mut commands: Commands,
+	unit_materials: Res<UnitMaterials>,
+	unit_meshes: Res<UnitMeshes>,
+) {
+	for reader in new_unit_events.iter() {
+		let initial_unit = InitialUnit::deserialize(&mut reader.read()).unwrap();
+		let entity = commands
+			.spawn_bundle(PbrBundle {
+				mesh: unit_meshes.0[initial_unit.class as usize].clone(),
+				material: unit_materials.standard.clone(),
+				..Default::default()
+			})
+			.insert(UnitComponent(Unit::from_initial_unit(&initial_unit)))
+			.id();
+		unitid_to_entity.insert(initial_unit.id, entity);
+	}
+}
+
+fn update_destinations(
+	mut update_destination_events: EventReader<
+		EventReadBuffer<{ ServerPacket::SetDestination as u16 }>,
+	>,
+	unitid_to_entity: Res<UnitIdToEntity>,
+	mut unit_query: Query<&mut UnitComponent>,
+) {
+	for reader in update_destination_events.iter() {
+		let destination = SetDestination::deserialize(&mut reader.read()).unwrap();
+		let entity = unitid_to_entity.get(&destination.unit).unwrap();
+		unit_query
+			.get_mut(*entity)
+			.unwrap()
+			.0
+			.set_destination_net(&destination);
 	}
 }

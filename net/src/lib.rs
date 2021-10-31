@@ -1,3 +1,7 @@
+//! Contains shared client and server net code.
+//!
+//! Re-exports some tokio types as well as [`packets`]
+
 pub extern crate packets;
 pub use tokio::runtime::Runtime;
 pub extern crate tokio;
@@ -14,6 +18,7 @@ extern crate log;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
 
+/// Wraps around a tokio socket & adress. Provides a read and write method taking [`packets::WriteBuf`]s and byte vecs.
 pub struct RemoteConnection {
 	pub socket: Arc<Mutex<TcpStream>>,
 	pub address: SocketAddr,
@@ -27,6 +32,7 @@ impl Clone for RemoteConnection {
 	}
 }
 
+/// Contains the possible outputs from reading from the socket, Ok returns the bytes read.
 pub enum ReadResponse {
 	Ok(usize),
 	Disconnected,

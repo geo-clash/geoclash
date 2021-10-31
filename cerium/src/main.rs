@@ -1,6 +1,7 @@
 use bevy::{pbr::AmbientLight, prelude::*};
 mod camera;
 mod city;
+mod client_unit;
 mod connect_ui;
 mod info;
 mod screenspace;

@@ -1,3 +1,6 @@
+//! Contains a macro to provide the int to enum conversion
+
+/// Int to enum conversion macro
 macro_rules! packet_enum {
 	($enum_name:ident; $($varient_name:ident),* ) => {
 		#[derive(Debug, PartialEq, Eq)]

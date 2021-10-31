@@ -1,5 +1,8 @@
+//! Contains byte parsing errors
+
 use thiserror::Error;
 
+/// Errors when parsing byte data
 #[derive(Error, Debug, PartialEq)]
 pub enum ReadValueError {
 	#[error("Attempted to read {0} bytes when parsing {1}")]

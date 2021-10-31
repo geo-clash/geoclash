@@ -1,12 +1,15 @@
-use glam::{Quat, Vec3};
+//! Contains types specific to the game that are sent over the network.
+
+use glam::Quat;
 
 use crate::Serializable;
+use game_statics::{UnitClassId, UnitId};
 
-use std::{
-	fmt,
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::fmt;
 
+/// Sent by the server to give the client information about the server to display to the user.
+///
+/// Contains a `name`, a `description` and a `host` string.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServerInfo {
 	pub name: String,
@@ -40,6 +43,9 @@ impl Serializable for ServerInfo {
 	}
 }
 
+/// Used by client for submitting sign up and log in requests
+///
+/// Contains a username and a password string
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Authentication {
 	pub username: String,
@@ -60,83 +66,110 @@ impl Serializable for Authentication {
 	}
 }
 
+/// Contains all data about a unit necessary for a client. Id, start and end locations, start time and class.
+///
+/// This is used for giving a client some initial data only.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Unit {
-	start: Quat,
-	end: Quat,
-	start_time: u128,
-	duration: u128,
-	class: usize,
+pub struct InitialUnit {
+	pub id: UnitId,
+	pub start: Quat,
+	pub end: Quat,
+	pub start_time: u128,
+	pub class: UnitClassId,
 }
 
-impl Unit {
-	fn time() -> u128 {
-		SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.unwrap()
-			.as_millis()
-	}
-	fn duration(start: Quat, end: Quat, class: usize) -> u128 {
-		(start.angle_between(end) / game_statics::UNIT_TYPES[class as usize].speed * 1000.) as u128
-	}
-	pub fn new(start: Vec3, end: Vec3, class: usize) -> Self {
-		let (start, end) = (Quat::from_scaled_axis(start), Quat::from_scaled_axis(end));
-		Self {
-			start,
-			end,
-			start_time: Self::time(),
-			duration: Self::duration(start, end, class),
-			class,
-		}
-	}
-	fn get_quat_position(&self) -> Quat {
-		let time = ((Self::time() - self.start_time) as f32) / self.duration as f32;
-		if time > 1. {
-			self.end
-		} else {
-			self.start.lerp(self.end, time)
-		}
-	}
-	pub fn get_position(&self) -> Vec3 {
-		self.get_quat_position().to_axis_angle().0
-	}
-	pub fn set_destination(&mut self, end: &Vec3) {
-		self.start = self.get_quat_position();
-		self.end = Quat::from_scaled_axis(*end);
-		self.start_time = Self::time();
-		self.duration = Self::duration(self.start, self.end, self.class);
-	}
-}
-
-impl Serializable for Unit {
+impl Serializable for InitialUnit {
 	fn serialize(&self, buf: &mut Vec<u8>) {
+		self.id.serialize(buf);
 		self.start.serialize(buf);
 		self.end.serialize(buf);
 		self.start_time.serialize(buf);
-		(self.class as u32).serialize(buf);
+		self.class.serialize(buf);
 	}
 
 	fn deserialize(buf: &mut crate::ReadBuffer) -> Result<Self, crate::error::ReadValueError> {
+		let id = UnitId::deserialize(buf)?;
 		let (start, end) = (Quat::deserialize(buf)?, Quat::deserialize(buf)?);
 		let start_time = u128::deserialize(buf)?;
-		let class = u32::deserialize(buf)? as usize;
+		let class = UnitClassId::deserialize(buf)?;
 		Ok(Self {
+			id,
 			start,
 			end,
 			start_time,
-			duration: Self::duration(start, end, class),
 			class,
 		})
 	}
 }
 
-#[test]
-fn test_get_position() {
-	let japan = Vec3::new(0.52484196, 0.5836691, -0.6195735);
-	let germany = Vec3::new(0.14106606, 0.79356587, 0.59190667);
-	let mut unit = Unit::new(japan, germany, 0);
-	assert_eq!(unit.duration, 1255);
-	assert_eq!(unit.get_position(), japan);
-	unit.start_time -= unit.duration;
-	assert_eq!(unit.get_position(), germany);
+/// Data sent to client to init world state from blank.
+///
+/// Contains the current server time and a list of [`InitialUnit`]
+#[derive(Clone, Debug, PartialEq)]
+pub struct InitialState {
+	pub time: u128,
+	pub units: Vec<InitialUnit>,
+}
+
+impl Serializable for InitialState {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		self.time.serialize(buf);
+		self.units.serialize(buf);
+	}
+
+	fn deserialize(buf: &mut crate::ReadBuffer) -> Result<Self, crate::error::ReadValueError> {
+		Ok(Self {
+			time: u128::deserialize(buf)?,
+			units: Vec::deserialize(buf)?,
+		})
+	}
+}
+
+/// Packet send by the client when the user clicks to move a unit.
+///
+/// Contains simply the unit id and the destination. Time & current position are calculated by the server to prevent cheating.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MoveUnit {
+	pub unit: UnitId,
+	pub destination: Quat,
+}
+impl Serializable for MoveUnit {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		self.unit.serialize(buf);
+		self.destination.serialize(buf);
+	}
+
+	fn deserialize(buf: &mut crate::ReadBuffer) -> Result<Self, crate::error::ReadValueError> {
+		Ok(Self {
+			unit: u32::deserialize(buf)?,
+			destination: Quat::deserialize(buf)?,
+		})
+	}
+}
+
+/// Packet sent by server to update all clients about a unit move.
+/// Contains the unit id, destination and start time
+#[derive(Clone, Debug, PartialEq)]
+pub struct SetDestination {
+	pub unit: UnitId,
+	pub current_position: Quat,
+	pub destination: Quat,
+	pub start_time: u128,
+}
+impl Serializable for SetDestination {
+	fn serialize(&self, buf: &mut Vec<u8>) {
+		self.unit.serialize(buf);
+		self.current_position.serialize(buf);
+		self.destination.serialize(buf);
+		self.start_time.serialize(buf);
+	}
+
+	fn deserialize(buf: &mut crate::ReadBuffer) -> Result<Self, crate::error::ReadValueError> {
+		Ok(Self {
+			unit: u32::deserialize(buf)?,
+			current_position: Quat::deserialize(buf)?,
+			destination: Quat::deserialize(buf)?,
+			start_time: u128::deserialize(buf)?,
+		})
+	}
 }
